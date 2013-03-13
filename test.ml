@@ -1,4 +1,4 @@
-
+(*
 let rec fonction_test x = let rec fonc l = match l with
 | [] -> 0
 | (s,`Int n)::r when s="runtime" -> n
@@ -35,6 +35,7 @@ let g p = match p with
 	| _ -> failwith "erreur no runtime"
 	)
 | _ -> failwith "erreur";;
+*)
 
 #use "topfind";;
 #require "curl";;
@@ -63,21 +64,36 @@ let p = Yojson.Safe.from_string (string_of_uri "http://api.allocine.fr/rest/v3/m
 
 
 (* Bonne fonction pr recup runtime (additionne ts les runtime) *)
-let rec fon1 j cle= match j with 
-| `Assoc l -> fon2 l
+let rec runtime_of_json (j : Yojson.Safe.json) : int = match j with 
+| `Assoc l -> aux l
 | `Int n -> n
-| `List l | `Tuple l -> fon2 l
-| `Variant (s, jo) -> match jo with
-    | Some j -> fon1 j cle
-    | None -> 0
+(*| `List l | `Tuple l -> List.fold_left (fun e -> runtime_of_json e cle) 0 l *)
+| `Variant (s, jo) -> (match jo with
+    | Some j -> runtime_of_json j
+    | None -> 0)
 | _ -> 0
-and fon2 l = match l with
-| (s,j)::r when s = cle -> fon1 j cle
-| (s,`Int n):: r -> fon2 r
-| (s,j)::r -> (fon1 j cle)+(fon2 r)
+and aux l = match l with
+| (s,j)::r when s = "runtime" -> runtime_of_json j
+| (s,`Int n):: r -> aux r 
+| (s,j)::r -> (runtime_of_json j )+(aux r)
 | [] -> 0;;
 
 (* Titre du film *)
 
 
+runtime_of_json p ;;
 
+
+let rec title_of_json (j : Yojson.Safe.json) : int = match j with 
+| `Assoc l -> aux l
+| `Int n -> n
+(*| `List l | `Tuple l -> List.fold_left (fun e -> runtime_of_json e cle) 0 l *)
+| `Variant (s, jo) -> (match jo with
+    | Some j -> runtime_of_json j
+    | None -> "")
+| _ -> 0
+and aux l = match l with
+| (s,j)::r when s = "runtime" -> runtime_of_json j
+| (s,`Int n):: r -> aux r 
+| (s,j)::r -> (runtime_of_json j )+(aux r)
+| [] -> 0;;
