@@ -1,46 +1,9 @@
-(*
-let rec fonction_test x = let rec fonc l = match l with
-| [] -> 0
-| (s,`Int n)::r when s="runtime" -> n
-| (_,j)::r -> fonction_test j in
-match x with 
-| `Assoc l -> fonc l 
-| _ -> -1;;
-
-let f1 p = match p with
-| `Assoc l -> l
-| _ -> failwith "erreur pas assoc";;
-
-let rec f2 l nom = match l with
-| (s,j)::r when s=nom -> j
-| _::r -> f2 r nom
-| [] -> failwith "pas de runtime";;
-
-let f3 j = match j with 
-| `Int n -> n
-| _ -> failwith "Erreur";;
-
-f3 (f2 (f1 (f2 (f1 p) "movie")) "runtime");;
-
-let fonction_runtime p = f3 (f2 (f1 (f2 (f1 p) "movie")) "runtime");;
-
-
-let f4 id = fonction_runtime (Yojson.Safe.from_string (string_of_uri ("http://api.allocine.fr/rest/v3/movie?partner=YW5kcm9pZC12M3M&format=json&code="^id))) ;;
-
-
-let g p = match p with
-| (s,x)::r when s="movie" -> 
-	(match x with
-	| (s', x') when s'="runtime" -> x'  
-	| _ -> failwith "erreur no runtime"
-	)
-| _ -> failwith "erreur";;
-*)
-
 #use "topfind";;
 #require "curl";;
 #require "yojson";;
 
+(* Fonction string_of_uri *)
+(* Copyright RDC *)
 let string_of_uri ?(headers=[]) ?query uri = 
     let uri = match query with
 	  None -> uri
@@ -57,36 +20,112 @@ let string_of_uri ?(headers=[]) ?query uri =
     | Curl.CurlException(curlcode,n,s) -> 
         failwith (Printf.sprintf "Curl error: %s (error code: %d, error symbol: %s)" 
                     s n s)
-    | e -> let e = Printexc.to_string e in failwith "Error: "^e;;
-
-
-let p = Yojson.Safe.from_string (string_of_uri "http://api.allocine.fr/rest/v3/movie?partner=YW5kcm9pZC12M3M&format=json&code=199070") ;;
-
-
-(* Bonne fonction pr recup runtime (additionne ts les runtime) *)
-let rec runtime_of_json (j : Yojson.Safe.json) : int = match j with 
-| `Assoc l -> aux l
-| `Int n -> n
-(*| `List l | `Tuple l -> List.fold_left (fun e -> runtime_of_json e cle) 0 l *)
-| `Variant (s, jo) -> (match jo with
-    | Some j -> runtime_of_json j
-    | None -> 0)
-| _ -> 0
-and aux l = match l with
-| (s,j)::r when s = "runtime" -> runtime_of_json j
-| (s,`Int n):: r -> aux r 
-| (s,j)::r -> (runtime_of_json j )+(aux r)
-| [] -> 0;;
-
-let rec runtime_of_allocine_json (j : Yojson.Safe.json) : int =
-  match j with
-    | `Assoc ((_, `Assoc ((cle, valeur) :: l')) :: _) when cle = "runtime" ->
-      (match valeur with `Int n -> n | _ -> failwith "bloublou") 
-    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
-      runtime_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
-    | _ -> failwith "dkfsdhf"
+    | e -> let e = Printexc.to_string e in failwith "Error: "^e
 ;;
 
+(**
+   Fonction récupérant un identifiant Allociné à partir d'un nom de film possible entré par l'utilisateur
+*)
+let movie_name = "amours%20imaginaires";;
+let allocine_id_of_movie_name movie_name =
+  let json_ast =
+    Yojson.Safe.from_string
+      (string_of_uri ("http://api.allocine.fr/rest/v3/search?partner=YW5kcm9pZC12M3M&filter=movie&format=json&q=" ^ movie_name)) in
+  match json_ast with
+    | `Assoc (("feed", `Assoc l) :: _) ->
+      let movie_field = List.assoc "movie" l in (
+	match movie_field with
+	  | `List ((`Assoc l') :: _) ->
+	    let code = List.assoc "code" l' in (
+	      match code with
+		| `Int n -> n
+		| _ -> failwith "AST problem"
+	    )
+	  | _ -> failwith "AST problem"
+      )
+    | _ -> failwith "Feed field not found"
+;;
+
+(* Exemple d'arbre de syntaxe abstraite d'un film *)
+let movie_id = allocine_id_of_movie_name movie_name;;
+let p = Yojson.Safe.from_string (
+  string_of_uri (
+    "http://api.allocine.fr/rest/v3/movie?partner=YW5kcm9pZC12M3M&format=json&code=" ^ (string_of_int movie_id)
+  )
+);;
+
+(**
+   Fonctions récupérant les informations de base à partir de l'AST de type JSON d'un film sur Allociné
+*)
+
+(* Fonction runtime_of_allocine_json *)
+(* Récupère la durée de film à partir d'un AST JSON d'un film sur Allocine *)
+let rec runtime_of_allocine_json (j : Yojson.Safe.json) : int =
+  match j with
+    | `Assoc ((_, `Assoc (("runtime", valeur) :: l')) :: _) ->
+      (match valeur with `Int n -> n | _ -> failwith "AST problem") 
+    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+      runtime_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+    | _ -> failwith "Runtime field not found"
+;;
+
+(* Fonction title_of_allocine_json *)
+(* Récupère le titre du film à partir d'un AST JSON d'un film sur Allocine *)
+let rec title_of_allocine_json (j : Yojson.Safe.json) : string =
+  match j with
+    | `Assoc ((_, `Assoc (("title", valeur) :: l')) :: _) ->
+      (match valeur with `String s -> s | _ -> failwith "AST problem") 
+    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+      title_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+    | _ -> failwith "Title field not found"
+;;
+
+(* Fonction production_year_of_allocine_json *)
+(* Récupère l'année de production du film à partir d'un AST JSON d'un film sur Allocine *)
+let rec production_year_of_allocine_json (j : Yojson.Safe.json) : int =
+  match j with
+    | `Assoc ((_, `Assoc (("productionYear", valeur) :: l')) :: _) ->
+      (match valeur with `Int n -> n | _ -> failwith "AST problem") 
+    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+      production_year_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+    | _ -> failwith "Production year field not found"
+;;
+
+(* Fonction nationality_of_allocine_json *)
+(* Récupère le(s) nationalité(s) du film à partir d'un AST JSON d'un film sur Allocine *)
+let rec nationality_of_allocine_json (j : Yojson.Safe.json) : string list =
+  let rec un_assoc c = match c with
+    | `Assoc (("$", `String s) :: _) -> s
+    | `Assoc ((_, _) :: c') -> un_assoc (`Assoc c')
+    | `Assoc [] -> failwith "AST problem"
+    | _ -> failwith "AST problem" in
+  match j with
+    | `Assoc ((_, `Assoc (("nationality", `List l) :: _)) :: _) ->
+      List.map (un_assoc) l
+    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+      nationality_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+    | _ -> failwith "Nationality field not found"
+;;
+
+(* Fonction genre_of_allocine_json *)
+(* Récupère le(s) genre(s) du film à partir d'un AST JSON d'un film sur Allocine *)
+let rec genre_of_allocine_json (j : Yojson.Safe.json) : string list =
+  let rec un_assoc c = match c with
+    | `Assoc (("$", `String s) :: _) -> s
+    | `Assoc ((_, _) :: c') -> un_assoc (`Assoc c')
+    | `Assoc [] -> failwith "AST problem"
+    | _ -> failwith "AST problem" in
+  match j with
+    | `Assoc ((_, `Assoc (("genre", `List l) :: _)) :: _) ->
+      List.map (un_assoc) l
+    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+      genre_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+    | _ -> failwith "Genre field not found"
+;;
+
+
+
+allocine_id_of_movie_name movie_name;;
 
 
 (* Modules *)
@@ -122,19 +161,3 @@ Film.getRuntime film1;;
  Hai : *_of_allocine_json, réfléchir à google places en géolocalisation
   *)
 
-runtime_of_json p ;;
-
-
-let rec title_of_json (j : Yojson.Safe.json) : int = match j with 
-| `Assoc l -> aux l
-| `Int n -> n
-(*| `List l | `Tuple l -> List.fold_left (fun e -> runtime_of_json e cle) 0 l *)
-| `Variant (s, jo) -> (match jo with
-    | Some j -> runtime_of_json j
-    | None -> "")
-| _ -> 0
-and aux l = match l with
-| (s,j)::r when s = "runtime" -> runtime_of_json j
-| (s,`Int n):: r -> aux r 
-| (s,j)::r -> (runtime_of_json j )+(aux r)
-| [] -> 0;;
