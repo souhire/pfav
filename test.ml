@@ -24,9 +24,12 @@ let string_of_uri ?(headers=[]) ?query uri =
 ;;
 
 (**
-   Fonction récupérant un identifiant Allociné à partir d'un nom de film possible entré par l'utilisateur
+   utilisateur donne nom d'un film
+   -> récupérer l'identifiant du film sur Allociné
 *)
 let movie_name = "amours%20imaginaires";;
+
+(* Fonction récupérant un identifiant Allociné à partir d'un nom de film possible entré par l'utilisateur *)
 let allocine_id_of_movie_name movie_name =
   let json_ast =
     Yojson.Safe.from_string
