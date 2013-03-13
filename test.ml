@@ -56,7 +56,7 @@ let string_of_uri ?(headers=[]) ?query uri =
     with 
     | Curl.CurlException(curlcode,n,s) -> 
         failwith (Printf.sprintf "Curl error: %s (error code: %d, error symbol: %s)" 
-                    (Curl.strerror curlcode) n s)
+                    s n s)
     | e -> let e = Printexc.to_string e in failwith "Error: "^e;;
 
 
@@ -78,8 +78,49 @@ and aux l = match l with
 | (s,j)::r -> (runtime_of_json j )+(aux r)
 | [] -> 0;;
 
+let rec runtime_of_allocine_json (j : Yojson.Safe.json) : int =
+  match j with
+    | `Assoc ((_, `Assoc ((cle, valeur) :: l')) :: _) when cle = "runtime" ->
+      (match valeur with `Int n -> n | _ -> failwith "bloublou") 
+    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+      runtime_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+    | _ -> failwith "dkfsdhf"
+;;
+
+
+
+(* Modules *)
+
+module type FilmSig =
+    sig
+      type t
+      val getTitle : t -> string
+      val getRuntime : t -> int
+      val create : string -> int -> t
+    end;;
+
+
+module Film : FilmSig =
+  struct
+    type t = { title : string ; runtime : int }
+    let getTitle f = f.title
+    let getRuntime f = f.runtime
+    let create titre duree = { title = titre ; runtime = duree }
+end;;
+
+let film1 : Film.t = Film.create "Les amours gays" 99999999999;;
+Film.getTitle film1;;
+Film.getRuntime film1;;
+
+
+
 (* Titre du film *)
 
+
+(*
+ Moi : Modules, réfléchir à google places pour récupérer restaurants, bars...
+ Hai : *_of_allocine_json, réfléchir à google places en géolocalisation
+  *)
 
 runtime_of_json p ;;
 
