@@ -131,7 +131,22 @@ let rec genre_of_allocine_json (j : Yojson.Safe.json) : string list =
 allocine_id_of_movie_name movie_name;;
 
 
+
+
 (* Modules *)
+
+(*
+ module pour les films
+ -> table de hashage 
+ module pour les personnes
+ module spectable 
+ -> horaire debut et fin
+ 
+ Chercher un time pour le temps....
+
+ module pour le restaurant 
+  *)
+
 
 module type FilmSig =
     sig
