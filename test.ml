@@ -140,7 +140,8 @@ let adresse_ex = "https://maps.googleapis.com/maps/api/place/textsearch/json?sen
 (* Position géographique (latitude, longitude) à partir d'un emplacement informel *)
 let geographic_location_of_informal_location (l : string) : float * float =
   (* a changer en attendant le support de HTTPS *)
-  let json_ast = Yojson.Safe.from_string (string_of_uri l) in
+  let uri = "https://maps.googleapis.com/maps/api/place/textsearch/json?sensor=true&query="^l^"&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE" in
+  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
   match json_ast with
     | `Assoc (l) -> (
       match (List.assoc "results" l) with
@@ -170,7 +171,8 @@ let restaurants_example = "https://maps.googleapis.com/maps/api/place/nearbysear
 let restaurants_at_geographic_location (emplacement : location) (radius : int) : float * float * string * string =
   (* a changer en attendant le support de HTTPS *)
   (* regler le pb de choisir l'emplacement le plus et NON le plus "interessant" *)
-  let json_ast = Yojson.Safe.from_string (string_of_uri emplacement) in
+  let uri = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location="^string_of_float(fst emplacement)^","^string_of_float(snd emplacement)^"&radius="^string_of_int radius^"&sensor=true&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&types=restaurant" in
+  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
   let (lat_location, lng_location) = match json_ast with
     | `Assoc (l) -> (
       match (List.assoc "results" l) with
@@ -220,6 +222,19 @@ restaurants_at_geographic_location (0., 0.) 0;;
 
 
 
+(* Information sur les cinemas  *)
+
+let cine_name_of_approx_location loca;; 
+
+
+let allocine_code_of_cine_name cine_name = 
+  let uri = "http://api.allocine.fr/rest/v3/search?partner=YW5kcm9pZC12M3M&q="^cine_name^"&format=json&filter=theater" in
+  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
+  
+
+
+
+
 (* Modules *)
 
 (*
@@ -235,13 +250,109 @@ restaurants_at_geographic_location (0., 0.) 0;;
   *)
 
 
+(*
+
+Module Film : id, titre, durée, acteurs, nationalité
+Module Séance: hash_film, heure_deb, hash_cinema, VO/VF
+Module Cinema : id, nom, addr, pos
+Module Personne : choix, (heure, marge), (lieu, marge), nom
+Module Restaurant : nom, addr, pos, id
+
+*)
+
 module type FilmSig =
     sig
       type t
+      val create : string -> t
       val getTitle : t -> string
       val getRuntime : t -> int
-      val create : string -> int -> t
+      val getActors : t -> string
+      val getNationality : t -> string list
+      (* val show : t -> string *)
     end;;
+
+module Film : FilmSig =
+  struct
+    type t = {title : string ; runtime : int ; actors : string ; nationality : string list}
+    let create movie_name = 
+      let id = allocine_id_of_movie_name movie_name in
+      let p = Yojson.Safe.from_string (
+	string_of_uri (
+	   "http://api.allocine.fr/rest/v3/movie?partner=YW5kcm9pZC12M3M&format=json&code=" ^ (string_of_int id))) in
+      {title = title_of_allocine_json p;
+       runtime = runtime_of_allocine_json p;
+       actors = "";
+       nationality = nationality_of_allocine_json p}
+    let getTitle f = f.title
+    let getRuntime f = f.runtime
+    let getActors f = f.actors
+    let getNationality f = f.nationality
+    (* let show f = 
+      let infos = "Le titre du film est : " ^ f.title 
+      ^ "\n Durée du film : " ^ (string_of_int f.runtime)
+      ^ "\n Acteurs : " ^ f.actors
+      ^ "\n Nationalité : " ^ (List.iter print_string f.nationality) 
+      in
+      print_string infos *)
+  end;;
+
+
+let test = Film.create "monde+oz";;
+Film.getTitle test;;
+Film.getRuntime test;;
+Film.getNationality test;;
+
+
+module type CineSig =
+  sig
+    type t
+    val create : unit -> t
+    val getId : t -> int
+    val getName : t -> string
+    val getAddr : t -> string
+    val getPos : t -> location
+  end;;
+
+module Cine =
+  struct
+    type t = { id : int; name : string; addr : string; pos: location}
+    let create id =   
+
+
+module type SeanceSig =
+  sig
+    type t
+    val create : Film.t -> Cine.t -> t
+    val getBegin : t -> int
+    val getLang : t -> bool
+    (* val show : t -> unit *)
+  end;;
+
+module Seance : SeanceSig =
+  struct
+    type t = { beg : int ; lang : bool }
+    let create f c -> 
+    let getBegin s = s.beg
+    let getLang s = s.lang
+    let 
+
+
+module type PersonSig = 
+  sig 
+    type t
+    val create : unit -> t
+    val getName : t -> string
+  end;;
+
+module type RestauSig =
+  sig
+    type t
+    val create : unit -> t
+    val getId : t -> int
+    val getName : t -> string
+    val getAddr : t -> string
+    val getPos : t -> (float * float)
+  end;;
 
 
 module Film : FilmSig =
@@ -252,9 +363,7 @@ module Film : FilmSig =
     let create titre duree = { title = titre ; runtime = duree }
 end;;
 
-let film1 : Film.t = Film.create "Les amours gays" 99999999999;;
-Film.getTitle film1;;
-Film.getRuntime film1;;
+
 
 
 
@@ -265,4 +374,3 @@ Film.getRuntime film1;;
  Moi : Modules, réfléchir à google places pour récupérer restaurants, bars...
  Hai : *_of_allocine_json, réfléchir à google places en géolocalisation
   *)
-
