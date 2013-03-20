@@ -1,3 +1,8 @@
+(**
+   Projet de programmation fonctionnelle M1
+   Souhire KENAWI - Hai NGUYEN VAN
+*)
+
 #use "topfind";;
 #require "curl";;
 #require "yojson";;
@@ -224,7 +229,7 @@ restaurants_at_geographic_location (0., 0.) 0;;
 
 (* Information sur les cinemas  *)
 
-let cine_name_of_approx_location loca;; 
+(* let cine_name_of_approx_location loca;;  *)
 
 
 let allocine_code_of_cine_name cine_name = 
