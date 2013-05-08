@@ -176,7 +176,7 @@ let restaurants_example = "https://maps.googleapis.com/maps/api/place/nearbysear
 let restaurants_at_geographic_location (emplacement : location) (radius : int) : float * float * string * string =
   (* a changer en attendant le support de HTTPS *)
   (* regler le pb de choisir l'emplacement le plus et NON le plus "interessant" *)
-  let uri = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location="^string_of_float(fst emplacement)^","^string_of_float(snd emplacement)^"&radius="^string_of_int radius^"&sensor=true&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&types=restaurant" in
+  let uri = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location="^(string_of_float(fst emplacement))^","^(string_of_float(snd emplacement))^"&radius="^(string_of_int radius)^"&sensor=true&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&types=restaurant" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
   let (lat_location, lng_location) = match json_ast with
     | `Assoc (l) -> (
@@ -235,7 +235,100 @@ restaurants_at_geographic_location (0., 0.) 0;;
 let allocine_code_of_cine_name cine_name = 
   let uri = "http://api.allocine.fr/rest/v3/search?partner=E00024954332&q="^cine_name^"&format=json&filter=theater" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
-  
+  let id = match json_ast with
+    | `Assoc (l) -> 
+      (match (List.assoc "feed" l) with
+	| `Assoc l' ->
+	  (match (List.assoc "theater" l') with
+	    | `List (l'') -> 
+	      (match (l'') with
+		| `Assoc l3 :: _ -> 
+		  (match (List.assoc "code" l3) with
+		    | `String s -> s
+		    | _ -> failwith "problème AST"
+		  )
+		| _ -> failwith "problème AST"
+	      )
+	    | _ -> failwith "problème AST"
+	  )
+	| _ -> failwith "problème AST"
+      )
+    | _ -> failwith "problème AST"
+  in id;;
+
+
+(* REQUETE 3 : obtenir la liste des cinémas à une distance donée d'un point donné *)
+
+let cinemas_at_geographic_location (emplacement: location) (radius: int)  =
+  let uri = "http://api.allocine.fr/rest/v3/theaterlist?partner=E00024954332&lat="^(string_of_float(fst emplacement))^"&long="^(string_of_float(snd emplacement))^"&radius="^(string_of_int radius)^"&format=json" in
+  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
+  match json_ast with
+    | `Assoc (l) -> 
+      (match (List.assoc "feed" l) with 
+	| `Assoc l' ->
+	  (match (List.assoc "theater" l') with
+	    | `List (l'') -> 
+	      let rec cines liste = 
+		(match (liste) with
+		  | [] -> []
+		  | `Assoc l3 :: r -> 
+		    let name = 
+		      (match (List.assoc "name" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      ) in
+		    let addr = 
+		      (match (List.assoc "address" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		    in
+		    let postal = 
+		      (match (List.assoc "postalCode" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		    in
+		    let city = 
+		       (match (List.assoc "city" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		    in
+		    let lat =
+		      (match (List.assoc "geoloc" l3) with
+			|`Assoc l4 -> (match (List.assoc "lat" l4) with
+			    |`Float f -> f
+			    | _ -> failwith "problème AST"
+			)
+			| _ -> failwith "problème AST"
+		      )
+		    in
+		    let long = 
+		      (match (List.assoc "geoloc" l3) with
+			|`Assoc l4 -> (match (List.assoc "long" l4) with
+			    |`Float f -> f
+			    | _ -> failwith "problème AST"
+			)
+			| _ -> failwith "problème AST"
+		      )
+		    in let res = (lat, long, name, addr^" "^postal^" "^city) 
+		       in res :: cines r 
+		  | _ -> failwith "problème AST"
+		) in cines (l'') 
+	    | _ -> failwith "problème AST"
+	  )
+	| _ -> failwith "problème AST"
+      )
+    | _ -> failwith "problème AST"
+;;
+
+
+
+(* REQUETE 2 : obtenir la liste des cinemas projetant un film donné dans une plage horaire donnée *)
+
+let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) (h : plage)=
+ 
 
 
 
@@ -273,7 +366,7 @@ module type FilmSig =
       val getRuntime : t -> int
       val getActors : t -> string
       val getNationality : t -> string list
-      (* val show : t -> string *)
+      val show : t -> unit 
     end;;
 
 module Film : FilmSig =
@@ -292,13 +385,13 @@ module Film : FilmSig =
     let getRuntime f = f.runtime
     let getActors f = f.actors
     let getNationality f = f.nationality
-    (* let show f = 
+    let show f = 
       let infos = "Le titre du film est : " ^ f.title 
-      ^ "\n Durée du film : " ^ (string_of_int f.runtime)
-      ^ "\n Acteurs : " ^ f.actors
-      ^ "\n Nationalité : " ^ (List.iter print_string f.nationality) 
+	^ "\n Durée du film : " ^ (string_of_int f.runtime)
+	^ "\n Acteurs : " ^ f.actors
+	^ "\n Nationalité : " ^ (String.concat " " f.nationality) 
       in
-      print_string infos *)
+      print_string infos 
   end;;
 
 
@@ -306,7 +399,7 @@ let test = Film.create "monde+oz";;
 Film.getTitle test;;
 Film.getRuntime test;;
 Film.getNationality test;;
-
+Film.show test;;
 
 module type CineSig =
   sig
