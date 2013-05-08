@@ -37,10 +37,10 @@ let string_of_uri ?(headers=[]) ?query uri =
 let movie_name = "amours%20imaginaires";;
 
 (* Fonction récupérant un identifiant Allociné à partir d'un nom de film possible entré par l'utilisateur *)
-let allocine_id_of_movie_name movie_name =
+let allocine_id_of_movie_name (movie_name : string) : int =
   let json_ast =
     Yojson.Safe.from_string
-      (string_of_uri ("http://api.allocine.fr/rest/v3/search?partner=YW5kcm9pZC12M3M&filter=movie&format=json&q=" ^ movie_name)) in
+      (string_of_uri ("http://api.allocine.fr/rest/v3/search?partner=E00024954332&filter=movie&format=json&q=" ^ movie_name)) in
   match json_ast with
     | `Assoc (("feed", `Assoc l) :: _) ->
       let movie_field = List.assoc "movie" l in (
@@ -60,7 +60,7 @@ let allocine_id_of_movie_name movie_name =
 let movie_id = allocine_id_of_movie_name movie_name;;
 let p = Yojson.Safe.from_string (
   string_of_uri (
-    "http://api.allocine.fr/rest/v3/movie?partner=YW5kcm9pZC12M3M&format=json&code=" ^ (string_of_int movie_id)
+    "http://api.allocine.fr/rest/v3/movie?partner=E00024954332&format=json&code=" ^ (string_of_int movie_id)
   )
 );;
 
@@ -221,7 +221,7 @@ let restaurants_at_geographic_location (emplacement : location) (radius : int) :
 (**
    Tests et debug
 *)
-geographic_location_of_informal_location "";;
+geographic_location_of_informal_location "paris";;
 allocine_id_of_movie_name movie_name;;
 restaurants_at_geographic_location (0., 0.) 0;;
 
@@ -233,7 +233,7 @@ restaurants_at_geographic_location (0., 0.) 0;;
 
 
 let allocine_code_of_cine_name cine_name = 
-  let uri = "http://api.allocine.fr/rest/v3/search?partner=YW5kcm9pZC12M3M&q="^cine_name^"&format=json&filter=theater" in
+  let uri = "http://api.allocine.fr/rest/v3/search?partner=E00024954332&q="^cine_name^"&format=json&filter=theater" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
   
 
@@ -283,7 +283,7 @@ module Film : FilmSig =
       let id = allocine_id_of_movie_name movie_name in
       let p = Yojson.Safe.from_string (
 	string_of_uri (
-	   "http://api.allocine.fr/rest/v3/movie?partner=YW5kcm9pZC12M3M&format=json&code=" ^ (string_of_int id))) in
+	   "http://api.allocine.fr/rest/v3/movie?partner=E00024954332&format=json&code=" ^ (string_of_int id))) in
       {title = title_of_allocine_json p;
        runtime = runtime_of_allocine_json p;
        actors = "";
@@ -360,6 +360,7 @@ module type RestauSig =
   end;;
 
 
+(*
 module Film : FilmSig =
   struct
     type t = { title : string ; runtime : int }
@@ -367,7 +368,7 @@ module Film : FilmSig =
     let getRuntime f = f.runtime
     let create titre duree = { title = titre ; runtime = duree }
 end;;
-
+*)
 
 
 
