@@ -324,10 +324,12 @@ let cinemas_at_geographic_location (emplacement: location) (radius: int)  =
 ;;
 
 
+type plage = int * int;; 
+
 
 (* REQUETE 2 : obtenir la liste des cinemas projetant un film donné dans une plage horaire donnée *)
 
-let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) (h : plage)=
+let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) (h : plage)= 
  
 
 
