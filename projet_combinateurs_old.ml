@@ -8,145 +8,6 @@
 #require "yojson";;
 
 type location = float * float;;
-type heure = int * int;;
-type plage = heure * heure;;
-type horaire = string * plage;;
-
-module type CineSig =
-  sig
-    type t
-    val create : string -> t
-    val getId : t -> int
-    val getName : t -> string
-    val getAddr : t -> string
-    val getPos : t -> location
-  end;;
-
-module Cine =
-  struct
-    type t = { id : string ; name : string ; addr : string ; pos: location}
-    let create cine_id cine_name cine_addr cine_pos =
-	{
-	  id   = cine_id ;
-	  name = cine_name ;
-	  addr = cine_addr ;
-	  pos  = cine_pos 
-	}
-    let getId f = f.id
-    let getName f = f.name
-    let getAddr f = f.addr
-    let getPos f = f.pos
-  end
-;;
-
-module type FilmSig =
-    sig
-      type t
-      val create : string -> int -> string -> string list -> t
-      val getTitle : t -> string
-      val getRuntime : t -> int
-      val getActors : t -> string
-      val getNationality : t -> string list
-      val show : t -> unit 
-    end;;
-
-(*changed*)
-module Film : FilmSig =
-  struct
-    type t = {title : string ; runtime : int ; actors : string ; nationality : string list}
-    let create movie_title movie_runtime movie_actors movie_nationality =
-      {
-	title = movie_title ;
-	runtime = movie_runtime ;
-	actors = movie_actors ;
-	nationality = movie_nationality
-      }
-(*
-    let informal_create movie_name = 
-      let id = allocine_id_of_movie_name movie_name in
-      let p = Yojson.Safe.from_string (
-	string_of_uri (
-	   "http://api.allocine.fr/rest/v3/movie?partner=E00024954332&format=json&code=" ^ (string_of_int id))) in
-      {title = title_of_allocine_json p;
-       runtime = runtime_of_allocine_json p;
-       actors = "";
-       nationality = nationality_of_allocine_json p}
-*)
-    let getTitle f = f.title
-    let getRuntime f = f.runtime
-    let getActors f = f.actors
-    let getNationality f = f.nationality
-    let show f = 
-      let infos = "Le titre du film est : " ^ f.title 
-	^ "\n Durée du film : " ^ (string_of_int f.runtime)
-	^ "\n Acteurs : " ^ f.actors
-	^ "\n Nationalité : " ^ (String.concat " " f.nationality) 
-      in
-      print_string infos 
-  end;;
-
-
-let test = Film.create "monde+oz";;
-Film.getTitle test;;
-Film.getRuntime test;;
-Film.getNationality test;;
-Film.show test;;
-
-module type SeanceSig =
-  sig
-    type t
-    val create : Film.t -> Cine.t -> t
-    val getBegin : t -> int
-    val getLang : t -> bool
-    (* val show : t -> unit *)
-  end;;
-
-module Seance : SeanceSig =
-  struct
-    type t = { beg : int ; lang : bool }
-    let create f c -> 
-    let getBegin s = s.beg
-    let getLang s = s.lang
-    let end;;
-
-
-module type PersonSig = 
-sig 
-  type t
-  val create : unit -> t
-  val getName : t -> string
-end;;
-
-module type RestauSig =
-sig
-  type t
-  val create : string -> string -> string -> location -> horaire list -> t
-  val getId : t -> string
-  val getName : t -> string
-  val getAddr : t -> string
-  val getPos : t -> location
-  val getTime : t -> horaire list
-  val show : t -> unit
-end;;
-
-module Restau (*: RestauSig *)=
-struct
-  type t = { id : string ; name : string ; addr : string ; pos : location; time : horaire list}
-  let create restau_id restau_name restau_addr restau_pos restau_time =
-    { id = restau_id;
-      name = restau_name;
-      addr = restau_addr;
-      pos = restau_pos;
-      time = restau_time}
-  let getId r = r.id
-  let getName r = r.name
-  let getAddr r = r.addr
-  let getPos r = r.pos
-  let getTime r = r.time
-  let show r =
-    print_string ("Le restau est "^getName r^"\n Addresse : "^getAddr r^"\n")
-end;;
-
 
 (* Fonction string_of_uri *)
 (* Copyright RDC *)
@@ -312,149 +173,50 @@ let geographic_location_of_informal_location (l : string) : float * float =
 
 let restaurants_example = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location=48.7928702,2.3331357&radius=100&sensor=true&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&types=restaurant";;
 
-(* REQUETE 6 : obtenir la liste des restaurants à une distance donnée d'un point donné *)
-
-let restaurants_at_geographic_location (emplacement : location) (radius : int)  =
+let restaurants_at_geographic_location (emplacement : location) (radius : int) : float * float * string * string =
   (* a changer en attendant le support de HTTPS *)
   (* regler le pb de choisir l'emplacement le plus et NON le plus "interessant" *)
   let uri = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location="^(string_of_float(fst emplacement))^","^(string_of_float(snd emplacement))^"&radius="^(string_of_int radius)^"&sensor=true&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&types=restaurant" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
-  (match json_ast with
-    | `Assoc l -> 
-      (match (List.assoc "results" l) with
-	| `List l' ->
-	  let rec restau liste = 
-	    (match liste with 
-	      | [] -> []
-	      | `Assoc l3 :: r ->
-		let pos = (match List.assoc "geometry" l3 with
-		  | `Assoc [("location",
-			     `Assoc [("lat", `Float f1); 
-				     ("lng", `Float f2)])] -> (f1,f2)
-		  | _ -> failwith "AST problem"
-		) in 
-		let id = (match List.assoc "reference" l3 with
-		  | `String s -> s
-		  | _ -> failwith "AST problem"
-		) in
-		let name = (match List.assoc "name" l3 with
-		  | `String s -> s
-		  | _ -> failwith "AST problem"
-		) in
-		let addr = (match List.assoc "vicinity" l3 with
-		  | `String s -> s
-		  | _ -> failwith "AST problem"
-		) in
-		let res = Restau.create id name addr pos []
-		in res::restau r
-	      | _ -> failwith "AST problem"
-	    ) in restau l'
-	| _ -> failwith "AST problem"
-      )
-    | _ -> failwith "AST problem"
-  )
-;;
-
-
-let l = restaurants_at_geographic_location loc 500;;
-Restau.getTime (List.nth l 0);;
-Restau.show (List.nth l 0);;
-List.map (Restau.show) l;;
-
-
-
-(* REQUETE 7 : Selectionner les restaurants ouverts dans une plage horaire donnée *)
-
-let aux l =
-  let day_of_week_number_day = function
-    | 0 -> "dimanche"
-    | 1 -> "lundi"
-    | 2 -> "mardi"
-    | 3 -> "mercredi"
-    | 4 -> "jeudi"
-    | 5 -> "vendredi"
-    | 6 -> "samedi"
-    | _ -> assert false
-  in
-  let heure_temps_of_string (s : string) : heure =
-    (int_of_string (String.sub s 0 2), int_of_string (String.sub s 2 2))
-  in
-  let aux2 = function
-    | `Assoc (
-      ("close", `Assoc (("day", `Int n) :: ("time", `String heure_fermeture_string) :: [])) ::
-	("open", `Assoc (("day", `Int _) :: ("time", `String heure_ouverture_string) :: [])) ::
-	[]) ->
-      (day_of_week_number_day n, (heure_temps_of_string heure_ouverture_string, heure_temps_of_string heure_fermeture_string))
-    | _ -> assert false
-  in  List.map (aux2) l
-;;
-
-
-let ajout_horaires_resto (l : Restau.t list) (l': (string * (horaire list)) list) = 
-  let assoc_restau_list cle l = 
-    match List.filter (fun restau -> Restau.getId restau = cle) l with
-      | [r] -> (Restau.getName r , Restau.getAddr r , Restau.getPos r) 
-      | _ -> assert false
-  in
-  List.map (fun (id, horaire) -> let (n,a,p) = (assoc_restau_list id l) 
-				 in Restau.create id n a p horaire ) l'
-;; 
-      
-
-      
-let rec horaires_restaurants l =
-  match l with
-    | [] -> []
-    | resto :: r -> let id = Restau.getId resto in 
-      let uri =
-	"https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&reference="^id^"&sensor=false" in
-      let json_ast = Yojson.Safe.from_string (string_of_uri uri)
-      in
-      (match json_ast with
-	| `Assoc l -> 
-	  (match List.assoc "result" l with
-	    | `Assoc l' ->
-	      (try(
-		(match List.assoc "opening_hours" l' with
-		  | `Assoc l'' -> 
-		    (match List.assoc "periods" l'' with
-		      | `List liste -> 
-			let res = (id, aux liste)
-			in res::(horaires_restaurants r) 
-			| _ -> failwith "AST problem"
-		    ) 
-		  | _ -> failwith "AST problem"
-		)) with Not_found -> horaires_restaurants r)
+  let (lat_location, lng_location) = match json_ast with
+    | `Assoc (l) -> (
+      match (List.assoc "results" l) with
+	| `List ((`Assoc l') :: _) -> (
+	  match (List.assoc "geometry" l') with
+	    | `Assoc l'' -> (
+	      match (List.assoc "location" l'') with 
+		| `Assoc (("lat", `Float f1) :: ("lng", `Float f2) :: _) -> (f1, f2)
 		| _ -> failwith "AST problem"
-	  )
+	    )
+	    | _ -> failwith "AST problem"
+	)
 	| _ -> failwith "AST problem"
-      ) ;;
-
-restaurants_at_geographic_location loc 500;;
-let loc = geographic_location_of_informal_location "boulevard+des+capucines+paris";;
-let l = restaurants_at_geographic_location loc 500;;
-let l' = horaires_restaurants l;;
-ajout_horaires_resto l l';;
-
-
-let is_intersection_not_null (hut : horaire) (hre : horaire) : bool =
-  match hre with
-    | (t1,t2) ->
-      (match hut with
-	|(t1',t2') -> if (t1'< t1) && (t1 < t2') then true else 
-	    if (t1 < t1') && (t2' < t2) then true else
-	      if (t1 < t1') && (t1' < t2) then true else false
-	| _ -> assert false
-      )
-    | _ -> assert false
-
-
-let open_restaurants_at_precise_time (l : Restau.t list) : Restau.t list =
-  let l' = horaires_restaurants l in
-  let restaurants = ajout_horaires_resto l l' in
-  List.map (fun ) restaurants
-
-
+    )
+    | _ -> failwith "AST problem"
+  and name = match json_ast with
+    | `Assoc (l) -> (
+      match (List.assoc "results" l) with
+	| `List ((`Assoc l') :: _) -> (
+	  match (List.assoc "name" l') with
+	    | `String s -> s
+	    | _ -> failwith "AST problem"
+	)
+	| _ -> failwith "AST problem"
+    )
+    | _ -> failwith "AST problem"
+  and address = match json_ast with
+    | `Assoc (l) -> (
+      match (List.assoc "results" l) with
+	| `List ((`Assoc l') :: _) -> (
+	  match (List.assoc "vicinity" l') with
+	    | `String s -> s
+	    | _ -> failwith "AST problem"
+	)
+	| _ -> failwith "AST problem"
+    )
+    | _ -> failwith "AST problem"
+  in (lat_location, lng_location, name, address)
+;;
 
 (**
    Tests et debug
@@ -469,7 +231,7 @@ restaurants_at_geographic_location (0., 0.) 0;;
 
 (* let cine_name_of_approx_location loca;;  *)
 
-(*changed*)
+
 let allocine_code_of_cine_name cine_name = 
   let uri = "http://api.allocine.fr/rest/v3/search?partner=E00024954332&q="^cine_name^"&format=json&filter=theater" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
@@ -510,11 +272,6 @@ let cinemas_at_geographic_location (emplacement: location) (radius: int)  =
 		(match (liste) with
 		  | [] -> []
 		  | `Assoc l3 :: r -> 
-		    let id = 
-		      (match (List.assoc "code" l3) with
-			| `String s -> s
-			| _ -> failwith "problème AST"
-		      ) in
 		    let name = 
 		      (match (List.assoc "name" l3) with
 			| `String s -> s
@@ -555,7 +312,7 @@ let cinemas_at_geographic_location (emplacement: location) (radius: int)  =
 			)
 			| _ -> failwith "problème AST"
 		      )
-		    in let res = Cine.create id name (addr ^ " " ^ postal ^ " " ^ city) (lat, long)
+		    in let res = (lat, long, name, addr^" "^postal^" "^city) 
 		       in res :: cines r 
 		  | _ -> failwith "problème AST"
 		) in cines (l'') 
@@ -566,16 +323,17 @@ let cinemas_at_geographic_location (emplacement: location) (radius: int)  =
     | _ -> failwith "problème AST"
 ;;
 
- 
+
+type plage = int * int;; 
 
 
 (* REQUETE 2 : obtenir la liste des cinemas projetant un film donné dans une plage horaire donnée *)
 
-let films_in_cinemas_at_precise_time (l : Cine.t list) = 
+let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) (h : plage)= 
   match l with
     | [] -> []
     | hd :: r -> 
-      let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters="^(Cine.getId hd)^"&movie=139589&format=json"
+      let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters="^hd.id^"&movie=139589&format=json"
       in let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
 	 let movie_showtimes_list_exists ast = 
 	 match ast with
@@ -586,11 +344,6 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) =
 	     )
 	   | _ -> assert false
 	 in movie_showtimes_list_exists json_ast;;
-
-
-
-
-
 
 
 (* Modules *)
@@ -618,6 +371,114 @@ Module Restaurant : nom, addr, pos, id
 
 *)
 
+module type FilmSig =
+    sig
+      type t
+      val create : string -> t
+      val getTitle : t -> string
+      val getRuntime : t -> int
+      val getActors : t -> string
+      val getNationality : t -> string list
+      val show : t -> unit 
+    end;;
+
+module Film : FilmSig =
+  struct
+    type t = {title : string ; runtime : int ; actors : string ; nationality : string list}
+    let create movie_name = 
+      let id = allocine_id_of_movie_name movie_name in
+      let p = Yojson.Safe.from_string (
+	string_of_uri (
+	   "http://api.allocine.fr/rest/v3/movie?partner=E00024954332&format=json&code=" ^ (string_of_int id))) in
+      {title = title_of_allocine_json p;
+       runtime = runtime_of_allocine_json p;
+       actors = "";
+       nationality = nationality_of_allocine_json p}
+    let getTitle f = f.title
+    let getRuntime f = f.runtime
+    let getActors f = f.actors
+    let getNationality f = f.nationality
+    let show f = 
+      let infos = "Le titre du film est : " ^ f.title 
+	^ "\n Durée du film : " ^ (string_of_int f.runtime)
+	^ "\n Acteurs : " ^ f.actors
+	^ "\n Nationalité : " ^ (String.concat " " f.nationality) 
+      in
+      print_string infos 
+  end;;
+
+
+let test = Film.create "monde+oz";;
+Film.getTitle test;;
+Film.getRuntime test;;
+Film.getNationality test;;
+Film.show test;;
+
+module type CineSig =
+  sig
+    type t
+    val create : unit -> t
+    val getId : t -> int
+    val getName : t -> string
+    val getAddr : t -> string
+    val getPos : t -> location
+  end;;
+
+module Cine =
+  struct
+    type t = { id : int; name : string; addr : string; pos: location}
+    let create id =   
+
+
+module type SeanceSig =
+  sig
+    type t
+    val create : Film.t -> Cine.t -> t
+    val getBegin : t -> int
+    val getLang : t -> bool
+    (* val show : t -> unit *)
+  end;;
+
+module Seance : SeanceSig =
+  struct
+    type t = { beg : int ; lang : bool }
+    let create f c -> 
+    let getBegin s = s.beg
+    let getLang s = s.lang
+    let 
+
+
+module type PersonSig = 
+  sig 
+    type t
+    val create : unit -> t
+    val getName : t -> string
+  end;;
+
+module type RestauSig =
+  sig
+    type t
+    val create : unit -> t
+    val getId : t -> int
+    val getName : t -> string
+    val getAddr : t -> string
+    val getPos : t -> (float * float)
+  end;;
+
+
+(*
+module Film : FilmSig =
+  struct
+    type t = { title : string ; runtime : int }
+    let getTitle f = f.title
+    let getRuntime f = f.runtime
+    let create titre duree = { title = titre ; runtime = duree }
+end;;
+*)
+
+
+
+
 (* Titre du film *)
 
 
@@ -625,80 +486,3 @@ Module Restaurant : nom, addr, pos, id
  Moi : Modules, réfléchir à google places pour récupérer restaurants, bars...
  Hai : *_of_allocine_json, réfléchir à google places en géolocalisation
   *)
-
-
-(**
-   JSON AST pour les cinémas
-*)
-let json_ast_of_informal_cine_id (cine_id : string) = 
-  Yojson.Safe.from_string (
-    string_of_uri (
-      "http://api.allocine.fr/rest/v3/theaterlist?partner=E00024954332&format=json&theater=" ^ cine_id
-    ))
-;;
-
-let test = json_ast_of_informal_cine_id "C0026";;
-
-let cine_name_of_allocine_json (j : Yojson.Safe.json) : string  = match j with
-  | `Assoc (("feed", `Assoc l) :: _) -> (match (List.assoc "theater" l) with
-      | `List l ->
-	let l1 = List.map (function (`Assoc l) -> l | _ -> assert false) l in
-	let l2 = List.filter (fun l -> List.exists (fun a -> a = ("code", `String "C0026")) l) l1 in
-	let l3 = List.nth l2 0 in
-	(match (List.assoc "name" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)   
-      | _ -> assert false
-  )
-  | _        -> assert false
-;;
-
-cine_name_of_allocine_json test;;
-
-let cine_addr_of_allocine_json (j : Yojson.Safe.json) : string  = match j with
-  | `Assoc (("feed", `Assoc l) :: _) -> (match (List.assoc "theater" l) with
-      | `List l ->
-	let l1 = List.map (function (`Assoc l) -> l | _ -> assert false) l in
-	let l2 = List.filter (fun l -> List.exists (fun a -> a = ("code", `String "C0026")) l) l1 in
-	let l3 = List.nth l2 0 in
-	(match (List.assoc "address" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)
-	^ " " 
-	^ (match (List.assoc "postalCode" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)
-	^ " " 
-	^ (match (List.assoc "city" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)
-
-      | _ -> assert false
-  )
-  | _        -> assert false
-;;
-
-cine_addr_of_allocine_json test;;
-
-let cine_pos_of_allocine_json (j : Yojson.Safe.json) : location = match j with
-  | `Assoc (("feed", `Assoc l) :: _) -> (match (List.assoc "theater" l) with
-      | `List l ->
-	let l1 = List.map (function (`Assoc l) -> l | _ -> assert false) l in
-	let l2 = List.filter (fun l -> List.exists (fun a -> a = ("code", `String "C0026")) l) l1 in
-	let l3 = List.nth l2 0 in
-	(match (List.assoc "geoloc" l3) with
-	  | `Assoc (("lat", `Float f1) :: ("long", `Float f2) :: _) -> (f1, f2)
-	  | _ -> assert false
-	)   
-      | _ -> assert false
-  )
-  | _        -> assert false
-;;
-
-cine_pos_of_allocine_json test;;
-
-
