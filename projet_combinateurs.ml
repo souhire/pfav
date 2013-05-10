@@ -902,18 +902,41 @@ let cine_pos_of_allocine_json (j : Yojson.Safe.json) : location = match j with
 cine_pos_of_allocine_json test;;
 
 
-(* REQUETE COMBINEE 1 *)
-(* TODO *)
-let requete_combinee_1 (emplacement: location) (radius: int) (informal_film_name : string) ((t1, t2) : plage) (d : date) : Cine.t list =
+(* REQUETE COMBINEE 1 : Quels sont les cinemas projettant le film informal_film_name dans la plage horaire (t1,t2) le jour d et qui sont dans un rayon de radius de emplacement *)
+
+let requete_combinee_1 (emplacement: string) (radius: int) (informal_film_name : string) ((t1, t2) : plage) (d : date) : Cine.t list =
+  let position = geographic_location_of_informal_location emplacement in
   let film : Film.t = Film.informal_create informal_film_name
-  and cine_list : Cine.t list = cinemas_at_geographic_location emplacement radius in
+  and cine_list : Cine.t list = cinemas_at_geographic_location position radius in
   films_in_cinemas_at_precise_time cine_list film (t1, t2) d
 ;;
 
-let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris" in
-requete_combinee_1 loc 2000 "iron man 3" ((11, 0), (20, 0)) (11, 5, 2013);;
+requete_combinee_1 "bibliotheque+francois+mitterand+paris" 2000 "iron man 3" ((11, 0), (20, 0)) (11, 5, 2013);;
 
 
-let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
-Film.informal_create "iron man 3";;
-cinemas_at_geographic_location loc 1000;;
+(*let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
+let film = Film.informal_create "iron man 3";;
+let cine = cinemas_at_geographic_location loc 1000;;
+
+films_in_cinemas_at_precise_time cine film ((11,0), (20,0)) (11, 5, 2013);;*)
+
+
+(*TODO*)
+
+
+(* REQUETE COMBINEE 2 : Quels sont les films projettés entre t1 et t2 dans un cinema à moins de radius de emplacement *)
+
+(* REQUETE COMBINEE 3 : Quels sont les restaurants ouverts entre t1 et t2 et qui sont amoins de radius de emplacement *)  
+
+(* REQUETE COMBINEE 4 : Quels sont les films, parmi une liste donnée, comprenant des criteres tels que VO ou 3D,
+   qui sont projetes entre t1 et t2 dans un cinema a moins de radius de emplacement, 
+   et qui permettent d'aller manger ensuite dans un restaurant ouvert a moins de radius de emplacement *)
+
+(* REQUETE COMBINEE 5 : Quels sont les films, parmi une liste donnee, qui sont projetes a des horaires permettant
+   a votre groupe d'amis de ne pas attendre plus d'une demi-heure, avant ou apres, et dans
+   des cinemas distant moins de radius l'un de l'autre *)
+
+(* REQUETE COMBINEE 6 : Quels sont les films, parmi une liste donnee, comprenant des criteres tels que VO ou 3D,
+qui sont projetes entre t1 et t2 dans des cinema a moins de radius d'un point autour
+duquel existe un restaurant ouvert a moins de radius2 permettent d'aller manger ensuite *)
+
