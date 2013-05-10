@@ -13,6 +13,12 @@ type date = int * int * int;;
 type plage = heure * heure;;
 type horaire = string * plage;;
 
+(* retire les espaces par des plus *)
+let no_spaces_of_string (s : string) : string = 
+ let s' = ref "" in
+ let () = String.iter (fun c -> if (c=' ') then s':=!s'^"+" else s':=!s'^(String.make 1 c)) s in !s';;
+
+
 (* Pretty string pour une date *)
 let string_of_date (delimiter : string) ((jj, mm, aaaa) : date) : string =
   let jour_string = if jj < 10 then "0" ^ string_of_int jj else string_of_int jj
@@ -20,6 +26,11 @@ let string_of_date (delimiter : string) ((jj, mm, aaaa) : date) : string =
   and annee_string = string_of_int aaaa
   in annee_string ^ delimiter ^ mois_string ^ delimiter ^ jour_string
 ;;
+
+let date_of_string (s : string) : date =
+  (int_of_string (String.sub s 8 2), int_of_string (String.sub s 5 2), int_of_string (String.sub s 0 4))
+;;
+
 
 (* Little parser vers un temps horaire *)
 (* Exemple : "10:24" -> (10, 24) *)
@@ -50,6 +61,50 @@ Module Personne : choix, (heure, marge), (lieu, marge), nom
 Module Restaurant : nom, addr, pos, id
 *)
 
+
+(* Fonction string_of_uri *)
+(* Copyright RDC *)
+let string_of_uri ?(headers=[]) ?query uri = 
+    let uri = match query with
+	  None -> uri
+	| Some q -> uri^"?"^q in
+    try let connection = Curl.init () and write_buff = Buffer.create 1763 in
+        Curl.set_writefunction connection
+                (fun x -> Buffer.add_string write_buff x; String.length x);
+        Curl.set_url connection uri;
+        Curl.set_httpheader connection headers; 
+        Curl.perform connection;
+        Curl.global_cleanup ();
+        Buffer.contents write_buff;
+    with 
+    | Curl.CurlException(curlcode,n,s) -> 
+        failwith (Printf.sprintf "Curl error: %s (error code: %d, error symbol: %s)" 
+                    s n s)
+    | e -> let e = Printexc.to_string e in failwith "Error: "^e
+;;
+
+(* Position géographique (latitude, longitude) à partir d'un emplacement informel *)
+let geographic_location_of_informal_location (l : string) : float * float =
+  (* a changer en attendant le support de HTTPS *)
+  let uri = "https://maps.googleapis.com/maps/api/place/textsearch/json?sensor=true&query="^ no_spaces_of_string l ^"&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE" in
+  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
+  match json_ast with
+    | `Assoc (l) -> (
+      match (List.assoc "results" l) with
+	| `List ((`Assoc l') :: _) -> (
+	  match (List.assoc "geometry" l') with
+	    | `Assoc l'' -> (
+	      match (List.assoc "location" l'') with 
+		| `Assoc (("lat", `Float f1) :: ("lng", `Float f2) :: _) -> (f1, f2)
+		| _ -> failwith "AST problem"
+	    )
+	    | _ -> failwith "AST problem"
+	)
+	| _ -> failwith "AST problem"
+    )
+    | _ -> failwith "AST problem"
+;;
+
 (* Module d'une salle de projection *)
 module type CineSig =
   sig
@@ -71,12 +126,62 @@ module Cine (* : CineSig *) =
 	  addr = cine_addr ;
 	  pos  = cine_pos 
 	}
+
+    let informal_create (cine_name : string) : t = 
+      let uri = "http://api.allocine.fr/rest/v3/search?partner=E00024954332&q=" ^ no_spaces_of_string cine_name ^ "&format=json&filter=theater" in
+      let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
+      match json_ast with
+	| `Assoc (l) -> 
+	  (match (List.assoc "feed" l) with
+	    | `Assoc l' ->
+	      (match (List.assoc "theater" l') with
+		| `List (l'') -> 
+		  (match (l'') with
+		    | `Assoc l3 :: _ -> 
+		      let theater_id = (match (List.assoc "code" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		      and theater_name = (match (List.assoc "name" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		      and theater_addr = (match (List.assoc "address" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		      and theater_postal_code = (match (List.assoc "address" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		      and theater_city = (match (List.assoc "address" l3) with
+			| `String s -> s
+			| _ -> failwith "problème AST"
+		      )
+		      in let theater_location = geographic_location_of_informal_location (theater_name ^ "+" ^ theater_addr ^ "+" ^ theater_postal_code ^ "+" ^ theater_city)
+			 in
+			 {
+			   id = theater_id ;
+			   name = theater_name ;
+			   addr = theater_addr ^ " " ^ theater_postal_code ^ " " ^ theater_city ;
+			   pos = theater_location
+			 }
+		    | _ -> failwith "problème AST"
+		  )
+		| _ -> failwith "problème AST"
+	      )
+	    | _ -> failwith "problème AST"
+	  )
+	| _ -> failwith "problème AST"
+
     let getId f = f.id
     let getName f = f.name
     let getAddr f = f.addr
     let getPos f = f.pos
   end
 ;;
+
+Cine.informal_create "mk2 bibliotheque";;
 
 (* Module d'un film produit *)
 module type FilmSig =
@@ -101,17 +206,105 @@ module Film (* : FilmSig *) =
 	actors = movie_actors ;
 	nationality = movie_nationality
       }
-(*
+
     let informal_create movie_name = 
-      let id = allocine_id_of_movie_name movie_name in
-      let p = Yojson.Safe.from_string (
-	string_of_uri (
-	   "http://api.allocine.fr/rest/v3/movie?partner=E00024954332&format=json&code=" ^ (string_of_int id))) in
-      {title = title_of_allocine_json p;
-       runtime = runtime_of_allocine_json p;
-       actors = "";
-       nationality = nationality_of_allocine_json p}
-*)
+      (* Fonction récupérant un identifiant Allociné à partir d'un nom de film possible entré par l'utilisateur *)
+      let allocine_id_of_movie_name (movie_name : string) : int =
+	let json_ast =
+	  Yojson.Safe.from_string
+	    (string_of_uri ("http://api.allocine.fr/rest/v3/search?partner=E00024954332&filter=movie&format=json&q=" ^ no_spaces_of_string movie_name)) in
+	match json_ast with
+	  | `Assoc (("feed", `Assoc l) :: _) ->
+	    let movie_field = List.assoc "movie" l in (
+	      match movie_field with
+		| `List ((`Assoc l') :: _) ->
+		  let code = List.assoc "code" l' in (
+		    match code with
+		      | `Int n -> n
+		      | _ -> failwith "AST problem"
+		  )
+		| _ -> failwith "AST problem"
+	    )
+	  | _ -> failwith "Feed field not found" in
+      (* Fonction runtime_of_allocine_json *)
+      (* Récupère la durée de film à partir d'un AST JSON d'un film sur Allocine *)
+      let rec runtime_of_allocine_json (j : Yojson.Safe.json) : int =
+	match j with
+	  | `Assoc ((_, `Assoc (("runtime", valeur) :: l')) :: _) ->
+	    (match valeur with `Int n -> n | _ -> failwith "AST problem") 
+	  | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+	    runtime_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+	  | _ -> failwith "Runtime field not found" in
+      (* Fonction title_of_allocine_json *)
+      (* Récupère le titre du film à partir d'un AST JSON d'un film sur Allocine *)
+      let rec title_of_allocine_json (j : Yojson.Safe.json) : string =
+	match j with
+	  | `Assoc ((_, `Assoc (("title", valeur) :: l')) :: _) ->
+	    (match valeur with `String s -> s | _ -> failwith "AST problem") 
+	  | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+	    title_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+	  | _ -> failwith "Title field not found" in
+      (* Fonction production_year_of_allocine_json *)
+      (* Récupère l'année de production du film à partir d'un AST JSON d'un film sur Allocine *)
+      let rec production_year_of_allocine_json (j : Yojson.Safe.json) : int =
+	match j with
+	  | `Assoc ((_, `Assoc (("productionYear", valeur) :: l')) :: _) ->
+	    (match valeur with `Int n -> n | _ -> failwith "AST problem") 
+	  | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+	    production_year_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+	  | _ -> failwith "Production year field not found" in
+      (* Fonction nationality_of_allocine_json *)
+      (* Récupère le(s) nationalité(s) du film à partir d'un AST JSON d'un film sur Allocine *)
+      let rec nationality_of_allocine_json (j : Yojson.Safe.json) : string list =
+	let rec un_assoc c = match c with
+	  | `Assoc (("$", `String s) :: _) -> s
+	  | `Assoc ((_, _) :: c') -> un_assoc (`Assoc c')
+	  | `Assoc [] -> failwith "AST problem"
+	  | _ -> failwith "AST problem" in
+	match j with
+	  | `Assoc ((_, `Assoc (("nationality", `List l) :: _)) :: _) ->
+	    List.map (un_assoc) l
+	  | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+	    nationality_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+	  | _ -> failwith "Nationality field not found" in
+    (* Fonction genre_of_allocine_json *)
+    (* Récupère le(s) genre(s) du film à partir d'un AST JSON d'un film sur Allocine *)
+    let rec genre_of_allocine_json (j : Yojson.Safe.json) : string list =
+      let rec un_assoc c = match c with
+	| `Assoc (("$", `String s) :: _) -> s
+	| `Assoc ((_, _) :: c') -> un_assoc (`Assoc c')
+	| `Assoc [] -> failwith "AST problem"
+	| _ -> failwith "AST problem" in
+      match j with
+	| `Assoc ((_, `Assoc (("genre", `List l) :: _)) :: _) ->
+	  List.map (un_assoc) l
+	| `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
+	  genre_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
+	| _ -> failwith "Genre field not found" in
+    (* Fonction actors_of_allocine_json *)
+    let rec actors_of_allocine_json (j : Yojson.Safe.json) : string =
+      match j with
+	| `Assoc (("movie", `Assoc l) :: _) -> (match List.assoc "castingShort" l with
+	    | `Assoc l' -> (match List.assoc "actors" l' with
+		| `String s -> s
+		| _ -> assert false
+	    )
+	    | _ -> assert false
+	)
+	| _ -> failwith "Actors field not found"	  
+    in
+    let id_of_movie = allocine_id_of_movie_name movie_name in
+    let p = Yojson.Safe.from_string (
+      string_of_uri (
+	"http://api.allocine.fr/rest/v3/movie?partner=E00024954332&format=json&code=" ^ (string_of_int id_of_movie))) in
+    {
+      id = id_of_movie ;
+      title = title_of_allocine_json p;
+      runtime = runtime_of_allocine_json p;
+      actors = actors_of_allocine_json p;
+      nationality = nationality_of_allocine_json p
+    }
+      
     let getId f = f.id
     let getTitle f = f.title
     let getRuntime f = f.runtime
@@ -124,7 +317,8 @@ module Film (* : FilmSig *) =
 	^ "\n Nationalité : " ^ (String.concat " " f.nationality) 
       in
       print_string infos 
-  end;;
+  end
+;;
 
 
 (*
@@ -207,170 +401,10 @@ struct
     print_string ("Le restau est "^getName r^"\n Addresse : "^getAddr r^"\n")
 end;;
 
-
-(* Fonction string_of_uri *)
-(* Copyright RDC *)
-let string_of_uri ?(headers=[]) ?query uri = 
-    let uri = match query with
-	  None -> uri
-	| Some q -> uri^"?"^q in
-    try let connection = Curl.init () and write_buff = Buffer.create 1763 in
-        Curl.set_writefunction connection
-                (fun x -> Buffer.add_string write_buff x; String.length x);
-        Curl.set_url connection uri;
-        Curl.set_httpheader connection headers; 
-        Curl.perform connection;
-        Curl.global_cleanup ();
-        Buffer.contents write_buff;
-    with 
-    | Curl.CurlException(curlcode,n,s) -> 
-        failwith (Printf.sprintf "Curl error: %s (error code: %d, error symbol: %s)" 
-                    s n s)
-    | e -> let e = Printexc.to_string e in failwith "Error: "^e
-;;
-
-(**
-   utilisateur donne nom d'un film
-   -> récupérer l'identifiant du film sur Allociné
-*)
-let movie_name = "amours%20imaginaires";;
-
-(* Fonction récupérant un identifiant Allociné à partir d'un nom de film possible entré par l'utilisateur *)
-let allocine_id_of_movie_name (movie_name : string) : int =
-  let json_ast =
-    Yojson.Safe.from_string
-      (string_of_uri ("http://api.allocine.fr/rest/v3/search?partner=E00024954332&filter=movie&format=json&q=" ^ movie_name)) in
-  match json_ast with
-    | `Assoc (("feed", `Assoc l) :: _) ->
-      let movie_field = List.assoc "movie" l in (
-	match movie_field with
-	  | `List ((`Assoc l') :: _) ->
-	    let code = List.assoc "code" l' in (
-	      match code with
-		| `Int n -> n
-		| _ -> failwith "AST problem"
-	    )
-	  | _ -> failwith "AST problem"
-      )
-    | _ -> failwith "Feed field not found"
-;;
-
-(* Exemple d'arbre de syntaxe abstraite d'un film *)
-let movie_id = allocine_id_of_movie_name movie_name;;
-let p = Yojson.Safe.from_string (
-  string_of_uri (
-    "http://api.allocine.fr/rest/v3/movie?partner=E00024954332&format=json&code=" ^ (string_of_int movie_id)
-  )
-);;
-
-(**
-   Fonctions récupérant les informations de base à partir de l'AST de type JSON d'un film sur Allociné
-*)
-
-(* Fonction runtime_of_allocine_json *)
-(* Récupère la durée de film à partir d'un AST JSON d'un film sur Allocine *)
-let rec runtime_of_allocine_json (j : Yojson.Safe.json) : int =
-  match j with
-    | `Assoc ((_, `Assoc (("runtime", valeur) :: l')) :: _) ->
-      (match valeur with `Int n -> n | _ -> failwith "AST problem") 
-    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
-      runtime_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
-    | _ -> failwith "Runtime field not found"
-;;
-
-(* Fonction title_of_allocine_json *)
-(* Récupère le titre du film à partir d'un AST JSON d'un film sur Allocine *)
-let rec title_of_allocine_json (j : Yojson.Safe.json) : string =
-  match j with
-    | `Assoc ((_, `Assoc (("title", valeur) :: l')) :: _) ->
-      (match valeur with `String s -> s | _ -> failwith "AST problem") 
-    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
-      title_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
-    | _ -> failwith "Title field not found"
-;;
-
-(* Fonction production_year_of_allocine_json *)
-(* Récupère l'année de production du film à partir d'un AST JSON d'un film sur Allocine *)
-let rec production_year_of_allocine_json (j : Yojson.Safe.json) : int =
-  match j with
-    | `Assoc ((_, `Assoc (("productionYear", valeur) :: l')) :: _) ->
-      (match valeur with `Int n -> n | _ -> failwith "AST problem") 
-    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
-      production_year_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
-    | _ -> failwith "Production year field not found"
-;;
-
-(* Fonction nationality_of_allocine_json *)
-(* Récupère le(s) nationalité(s) du film à partir d'un AST JSON d'un film sur Allocine *)
-let rec nationality_of_allocine_json (j : Yojson.Safe.json) : string list =
-  let rec un_assoc c = match c with
-    | `Assoc (("$", `String s) :: _) -> s
-    | `Assoc ((_, _) :: c') -> un_assoc (`Assoc c')
-    | `Assoc [] -> failwith "AST problem"
-    | _ -> failwith "AST problem" in
-  match j with
-    | `Assoc ((_, `Assoc (("nationality", `List l) :: _)) :: _) ->
-      List.map (un_assoc) l
-    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
-      nationality_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
-    | _ -> failwith "Nationality field not found"
-;;
-
-(* Fonction genre_of_allocine_json *)
-(* Récupère le(s) genre(s) du film à partir d'un AST JSON d'un film sur Allocine *)
-let rec genre_of_allocine_json (j : Yojson.Safe.json) : string list =
-  let rec un_assoc c = match c with
-    | `Assoc (("$", `String s) :: _) -> s
-    | `Assoc ((_, _) :: c') -> un_assoc (`Assoc c')
-    | `Assoc [] -> failwith "AST problem"
-    | _ -> failwith "AST problem" in
-  match j with
-    | `Assoc ((_, `Assoc (("genre", `List l) :: _)) :: _) ->
-      List.map (un_assoc) l
-    | `Assoc ((c1, `Assoc (_ :: l')) :: c2) ->
-      genre_of_allocine_json (`Assoc ((c1, `Assoc l') :: c2))
-    | _ -> failwith "Genre field not found"
-;;
-
-(**
-   L'utilisateur donne sa position géographique à l'aide d'un emplacement informel (nom de rue, métro)
-*)
-
-(*  Une instance possible d'AST JSON par Google Places pour la position géographique d'un emplacement informel *)
-
-let adresse_ex = "https://maps.googleapis.com/maps/api/place/textsearch/json?sensor=true&query=rue+camille+desmoulins+cachan&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE";;
-
-
-(* Position géographique (latitude, longitude) à partir d'un emplacement informel *)
-let geographic_location_of_informal_location (l : string) : float * float =
-  (* a changer en attendant le support de HTTPS *)
-  let uri = "https://maps.googleapis.com/maps/api/place/textsearch/json?sensor=true&query="^l^"&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE" in
-  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
-  match json_ast with
-    | `Assoc (l) -> (
-      match (List.assoc "results" l) with
-	| `List ((`Assoc l') :: _) -> (
-	  match (List.assoc "geometry" l') with
-	    | `Assoc l'' -> (
-	      match (List.assoc "location" l'') with 
-		| `Assoc (("lat", `Float f1) :: ("lng", `Float f2) :: _) -> (f1, f2)
-		| _ -> failwith "AST problem"
-	    )
-	    | _ -> failwith "AST problem"
-	)
-	| _ -> failwith "AST problem"
-    )
-    | _ -> failwith "AST problem"
-;;
-
 (**
    Googles Places renvoie tous les restaurants à un emplacement géographique suivant un rayon précis
 *)
 
-(*
-  Une instance possible d'AST JSON par Google Places pour la position géographique d'un restaurant proche d'un emplacement géographique *)
-
-let restaurants_example = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location=48.7928702,2.3331357&radius=100&sensor=true&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&types=restaurant";;
 
 (* REQUETE 6 : obtenir la liste des restaurants à une distance donnée d'un point donné *)
 
@@ -495,24 +529,9 @@ let l = restaurants_at_geographic_location loc 500;;
 let l' = horaires_restaurants l;;
 let resto = ajout_horaires_resto l l';;
 
-(*
-let is_intersection_not_null (hut : plage) (hre : plage) : bool =
-  match hre with
-    | (t1,t2) ->
-      (match hut with
-	|(t1',t2') -> if (t1' @< t1) && (t1 @< t2') then true else 
-	    if (t1 @< t1') && (t2' @< t2) then true else
-	      if (t1 @< t1') && (t1' @< t2) then true else false
-	| _ -> assert false
-      )
-    | _ -> assert false
-;;
-*)
-
 let is_intersection_not_null ((t1', t2') : plage) ((t1, t2) : plage) : bool =
   (t1' @< t1) && (t1 @< t2') || (t1 @< t1') && (t2' @< t2) || (t1 @< t1') && (t1' @< t2);;
 
-(* Changed *)
 let open_restaurants_at_precise_time (l : Restau.t list) (j : string) (p : plage)  =
   let l' = horaires_restaurants l in
   let liste = (List.map (fun elmt -> 
@@ -520,53 +539,10 @@ let open_restaurants_at_precise_time (l : Restau.t list) (j : string) (p : plage
     (List.filter ( fun e -> ((fst e) = j ) && (is_intersection_not_null p (snd e))) horaires)))) l') in
   let liste' = List.filter (fun e -> not((snd e)=[])) liste in
   let res = List.filter (fun (str,_) -> List.exists (fun (str',_) -> str = str') liste') l' in ajout_horaires_resto l res
-(*in
-  let resto = List.filter (fun elmt -> ((fst elmt) = j) && (is_intersection_not_null p (snd elmt))) horaires in   
-  let restaurants = ajout_horaires_resto l resto in
-  restaurants *)
 ;;
 
 
 open_restaurants_at_precise_time resto  "lundi" ((09,00),(11,00));;
-
-
-(**
-   Tests et debug
-*)
-geographic_location_of_informal_location "paris";;
-allocine_id_of_movie_name movie_name;;
-restaurants_at_geographic_location (0., 0.) 0;;
-
-
-
-(* Information sur les cinemas  *)
-
-(* let cine_name_of_approx_location loca;;  *)
-
-
-let allocine_code_of_cine_name cine_name = 
-  let uri = "http://api.allocine.fr/rest/v3/search?partner=E00024954332&q="^cine_name^"&format=json&filter=theater" in
-  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
-  let id = match json_ast with
-    | `Assoc (l) -> 
-      (match (List.assoc "feed" l) with
-	| `Assoc l' ->
-	  (match (List.assoc "theater" l') with
-	    | `List (l'') -> 
-	      (match (l'') with
-		| `Assoc l3 :: _ -> 
-		  (match (List.assoc "code" l3) with
-		    | `String s -> s
-		    | _ -> failwith "problème AST"
-		  )
-		| _ -> failwith "problème AST"
-	      )
-	    | _ -> failwith "problème AST"
-	  )
-	| _ -> failwith "problème AST"
-      )
-    | _ -> failwith "problème AST"
-  in id;;
 
 
 (* REQUETE 3 : obtenir la liste des cinémas à une distance donée d'un point donné *)
@@ -641,11 +617,74 @@ let cinemas_at_geographic_location (emplacement: location) (radius: int)  =
 ;;
 
 (* REQUETE : Cine.t × Film.t -> Séance.t list *)
-(* TODO Hai *)
+let seances_of_film_at_cinema (film : Film.t) (cine : Cine.t) = 
+  let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters=" ^ (Cine.getId cine) ^ "&movie=" ^ (string_of_int (Film.getId film)) ^ "&format=json" in
+  let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
+  let seance_list_of_screening_type (j : Yojson.Safe.json) = 
+  let is_3d (j : Yojson.Safe.json) = match j with
+    | `Assoc l -> (match (List.assoc "screenFormat" l) with
+	| `Assoc (("code", `Int n) :: ("$", `String _) :: []) -> n = 110003
+	| _ -> assert false
+    )
+    | _ -> assert false
+  and is_numerique (j : Yojson.Safe.json) = match j with
+  | `Assoc l -> (match (List.assoc "screenFormat" l) with
+      | `Assoc (("code", `Int n) :: ("$", `String _) :: []) -> n = 110002
+      | _ -> assert false
+  )
+  | _ -> assert false
+  and is_vo (j : Yojson.Safe.json) = match j with
+  | `Assoc l -> (match (List.assoc "version" l) with
+      | `Assoc (("original", `String b) :: _) -> (b = "true")
+      | _ -> assert false
+  )
+  | _ -> assert false in
+  let is_this_seance_type_3d = is_3d j
+  and is_this_seance_type_numerique = is_numerique j
+  and is_this_seance_vo = is_vo j in
+  let list_whose_dates_are_not_seperated = match j with
+    | `Assoc l -> (match List.assoc "scr" l with
+	| `List l' ->
+	  List.map
+	    (fun e -> match e with
+	      | `Assoc (("d", `String date_string) :: ("t", `List l'') :: []) ->
+		List.map
+		  (fun e' -> match e' with 
+		    | `Assoc (("code", `Int movie_code) :: ("p", _) :: ("$", `String heure_string) :: []) ->
+		      Seance.create movie_code film cine (date_of_string date_string) (heure_of_string heure_string) (Some is_this_seance_vo) (Some (is_this_seance_type_3d && (not is_this_seance_type_numerique)))
+		    | _ -> assert false
+		  )
+		  l''
+	      | _ -> assert false
+	    )
+	    l'
+	| _ -> assert false
+    )
+    | _ -> assert false
+  in List.flatten list_whose_dates_are_not_seperated
+  in
+  match json_ast with
+    | `Assoc (("feed", `Assoc (l)) :: _) ->
+      (match (List.assoc "theaterShowtimes" l)  with
+	| `List (`Assoc l :: _) -> (match (List.assoc "movieShowtimes" l) with
+	    | `List (json_ast_of_screening_type_1 :: json_ast_of_screening_type_2 :: []) -> 
+	      (seance_list_of_screening_type json_ast_of_screening_type_1)
+	      @ (seance_list_of_screening_type json_ast_of_screening_type_2)
+	    | `List (json_ast_of_screening_type :: []) ->
+	      seance_list_of_screening_type json_ast_of_screening_type
+	    | _ -> assert false
+	)
+	| _ -> assert false
+      )
+    | _ -> assert false
+;;
+
+let film_test = Film.informal_create "iron+man+3";;
+let cine_test = Cine.informal_create "ugc bercy";;
+let test_seance_type = seances_of_film_at_cinema film_test cine_test;;
+seance_list_of_screening_type test_seance_type;;
 
 
-
-(* changed *)
 (* REQUETE 1 : obtenir la liste des films projettés dans un cinema donné *)
 
 let films_in_precise_cinema (cine : Cine.t) : Film.t list =
@@ -865,4 +904,16 @@ cine_pos_of_allocine_json test;;
 
 (* REQUETE COMBINEE 1 *)
 (* TODO *)
-let requete_combinee_1 
+let requete_combinee_1 (emplacement: location) (radius: int) (informal_film_name : string) ((t1, t2) : plage) (d : date) : Cine.t list =
+  let film : Film.t = Film.informal_create informal_film_name
+  and cine_list : Cine.t list = cinemas_at_geographic_location emplacement radius in
+  films_in_cinemas_at_precise_time cine_list film (t1, t2) d
+;;
+
+let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris" in
+requete_combinee_1 loc 2000 "iron man 3" ((11, 0), (20, 0)) (11, 5, 2013);;
+
+
+let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
+Film.informal_create "iron man 3";;
+cinemas_at_geographic_location loc 1000;;
