@@ -415,7 +415,7 @@ let restaurants_at_geographic_location (emplacement : location) (radius : int)  
   )
 ;;
 
-(* BUG loc ?*)
+let loc = geographic_location_of_informal_location "MK2+bibliotheque+paris";;
 let l = restaurants_at_geographic_location loc 500;;
 Restau.getTime (List.nth l 0);;
 Restau.show (List.nth l 0);;
@@ -424,30 +424,6 @@ List.map (Restau.show) l;;
 
 
 (* REQUETE 7 : Selectionner les restaurants ouverts dans une plage horaire donnée *)
-
-let aux l =
-  let day_of_week_number_day = function
-    | 0 -> "dimanche"
-    | 1 -> "lundi"
-    | 2 -> "mardi"
-    | 3 -> "mercredi"
-    | 4 -> "jeudi"
-    | 5 -> "vendredi"
-    | 6 -> "samedi"
-    | _ -> assert false
-  in
-  let heure_temps_of_string (s : string) : heure =
-    (int_of_string (String.sub s 0 2), int_of_string (String.sub s 2 2))
-  in
-  let aux2 = function
-    | `Assoc (
-      ("close", `Assoc (("day", `Int n) :: ("time", `String heure_fermeture_string) :: [])) ::
-	("open", `Assoc (("day", `Int _) :: ("time", `String heure_ouverture_string) :: [])) ::
-	[]) ->
-      (day_of_week_number_day n, (heure_temps_of_string heure_ouverture_string, heure_temps_of_string heure_fermeture_string))
-    | _ -> assert false
-  in  List.map (aux2) l
-;;
 
 
 let ajout_horaires_resto (l : Restau.t list) (l': (string * (horaire list)) list) = 
@@ -463,38 +439,61 @@ let ajout_horaires_resto (l : Restau.t list) (l': (string * (horaire list)) list
 
       
 let rec horaires_restaurants l =
+  let aux l =
+    let day_of_week_number_day = function
+      | 0 -> "dimanche"
+      | 1 -> "lundi"
+      | 2 -> "mardi"
+      | 3 -> "mercredi"
+      | 4 -> "jeudi"
+      | 5 -> "vendredi"
+      | 6 -> "samedi"
+      | _ -> assert false
+    in
+    let heure_temps_of_string (s : string) : heure =
+      (int_of_string (String.sub s 0 2), int_of_string (String.sub s 2 2))
+    in
+    let aux2 = function
+      | `Assoc (
+	("close", `Assoc (("day", `Int n) :: ("time", `String heure_fermeture_string) :: [])) ::
+	  ("open", `Assoc (("day", `Int _) :: ("time", `String heure_ouverture_string) :: [])) ::
+	  []) ->
+	(day_of_week_number_day n, (heure_temps_of_string heure_ouverture_string, heure_temps_of_string heure_fermeture_string))
+      | _ -> assert false
+    in  List.map (aux2) l
+  in
   match l with
     | [] -> []
     | resto :: r -> let id = Restau.getId resto in 
-      let uri =
-	"https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&reference="^id^"&sensor=false" in
-      let json_ast = Yojson.Safe.from_string (string_of_uri uri)
-      in
-      (match json_ast with
-	| `Assoc l -> 
-	  (match List.assoc "result" l with
-	    | `Assoc l' ->
-	      (try(
-		(match List.assoc "opening_hours" l' with
-		  | `Assoc l'' -> 
-		    (match List.assoc "periods" l'' with
-		      | `List liste -> 
-			let res = (id, aux liste)
-			in res::(horaires_restaurants r) 
-			| _ -> failwith "AST problem"
-		    ) 
-		  | _ -> failwith "AST problem"
-		)) with Not_found -> horaires_restaurants r)
-		| _ -> failwith "AST problem"
-	  )
-	| _ -> failwith "AST problem"
-      ) ;;
+		    let uri =
+		      "https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&reference="^id^"&sensor=false" in
+		    let json_ast = Yojson.Safe.from_string (string_of_uri uri)
+		    in
+		    (match json_ast with
+		      | `Assoc l -> 
+			(match List.assoc "result" l with
+			  | `Assoc l' ->
+			    (try(
+			      (match List.assoc "opening_hours" l' with
+				| `Assoc l'' -> 
+				  (match List.assoc "periods" l'' with
+				    | `List liste -> 
+				      let res = (id, aux liste)
+				      in res::(horaires_restaurants r) 
+				    | _ -> failwith "AST problem"
+				  ) 
+				| _ -> failwith "AST problem"
+			      )) with Not_found -> horaires_restaurants r)
+			  | _ -> failwith "AST problem"
+			)
+		      | _ -> failwith "AST problem"
+		    ) ;;
 
 restaurants_at_geographic_location loc 500;;
 let loc = geographic_location_of_informal_location "boulevard+des+capucines+paris";;
 let l = restaurants_at_geographic_location loc 500;;
 let l' = horaires_restaurants l;;
-ajout_horaires_resto l l';;
+let resto = ajout_horaires_resto l l';;
 
 (*
 let is_intersection_not_null (hut : plage) (hre : plage) : bool =
@@ -513,12 +512,22 @@ let is_intersection_not_null (hut : plage) (hre : plage) : bool =
 let is_intersection_not_null ((t1', t2') : plage) ((t1, t2) : plage) : bool =
   (t1' @< t1) && (t1 @< t2') || (t1 @< t1') && (t2' @< t2) || (t1 @< t1') && (t1' @< t2);;
 
-(* BUG TODO *)
-let open_restaurants_at_precise_time (l : Restau.t list) : Restau.t list =
+(* Changed *)
+let open_restaurants_at_precise_time (l : Restau.t list) (j : string) (p : plage)  =
   let l' = horaires_restaurants l in
-  let restaurants = ajout_horaires_resto l l' in
-  List.map (fun ) restaurants
+  let liste = (List.map (fun elmt -> 
+    let horaires = snd elmt in ((fst elmt),( 
+    (List.filter ( fun e -> ((fst e) = j ) && (is_intersection_not_null p (snd e))) horaires)))) l') in
+  let liste' = List.filter (fun e -> not((snd e)=[])) liste in
+  let res = List.filter (fun (str,_) -> List.exists (fun (str',_) -> str = str') liste') l' in ajout_horaires_resto l res
+(*in
+  let resto = List.filter (fun elmt -> ((fst elmt) = j) && (is_intersection_not_null p (snd elmt))) horaires in   
+  let restaurants = ajout_horaires_resto l resto in
+  restaurants *)
 ;;
+
+
+open_restaurants_at_precise_time resto  "lundi" ((09,00),(11,00));;
 
 
 (**
@@ -696,7 +705,7 @@ let films_in_precise_cinema (cine : Cine.t) : Film.t list =
     | _ -> assert false
 ;;
 
-let cine = Cine.create "C0026" " " " " (0.0,0.0);; 
+let cine = Cine.create "C0026" " " " " (0.0,0.0);;
 let test = films_in_precise_cinema cine;;
 
 let test = List.nth test 0;;
@@ -715,15 +724,14 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
     let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters="^ Cine.getId cine ^ "&movie=" ^ string_of_int (Film.getId f) ^ "&format=json" in
     let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
     match json_ast with
-    | `Assoc (("feed", `Assoc (l)) :: _) ->
-      (match (List.assoc "theaterShowtimes" l)  with
-	| `List (`Assoc l :: _) ->
-	  List.exists (fun (x, _) -> x = "movieShowtimes") l
-	| _ -> assert false
-      )
-    | _ -> assert false
-  in
-  let movie_showtimes_of_theater (cine : Cine.t) : bool = 
+      | `Assoc (("feed", `Assoc (l)) :: _) ->
+	(try (match (List.assoc "theaterShowtimes" l)  with
+	  | `List (`Assoc l :: _) ->
+	    List.exists (fun (x, _) -> x = "movieShowtimes") l
+	  | _ -> assert false
+	) with Not_found -> false)
+      | _ -> assert false
+  and  movie_showtimes_of_theater (cine : Cine.t) : bool = 
     let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters="^ Cine.getId cine ^ "&movie=" ^ string_of_int (Film.getId f) ^ "&format=json" in
     let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
     match json_ast with
@@ -734,20 +742,20 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
 	      (match json_ast_of_screening_type with
 		| `Assoc l' -> (match List.assoc "scr" l' with
 		    | `List l'' ->
-		      let l''' = List.filter (function `Assoc (("d", `String s) :: _) -> s = (string_of_date "-" d) | _ -> assert false) l'' in
-		      (match l''' with
-			| `Assoc (l4) :: _ -> (match (List.assoc "t" l4) with
-			    | `List l5 ->
-			      List.exists (function
-				| `Assoc (_ :: _ :: ("$", `String s) :: []) ->
-				  (t1 @<= (heure_of_string s)) && ((heure_of_string s) @<= t2)
-				| _ -> assert false
-			      ) l5
-			    | _ -> assert false
-			)
+			let l''' = List.filter (function `Assoc (("d", `String s) :: _) -> s = (string_of_date "-" d) | _ -> assert false) l'' in
+			(match l''' with
+			  | `Assoc (l4) :: _ -> (match (List.assoc "t" l4) with
+			      | `List l5 ->
+				List.exists (function
+				  | `Assoc (_ :: _ :: ("$", `String s) :: []) ->
+				    (t1 @<= (heure_of_string s)) && ((heure_of_string s) @<= t2)
+				  | _ -> assert false
+				) l5
+			      | _ -> assert false
+			  )
+			  | _ -> false
+			)	
 			| _ -> assert false
-		      )	
-		    | _ -> assert false
 		)
 		| _ -> assert false
 	      )
@@ -767,6 +775,17 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
   let salles_projetant_le_film = List.filter (movie_showtimes_list_exists) l 
   in List.filter (movie_showtimes_of_theater) salles_projetant_le_film
 ;;
+
+let cine = [Cine.create "C0026" " " " " (0.0,0.0);
+	    Cine.create "CO144" " " " " (0.0,0.0);
+	    Cine.create "C0146" " " " " (0.0,0.0);
+	    Cine.create "C2954" " " " " (0.0,0.0);
+	    Cine.create "B0193" " " " " (0.0,0.0)];;
+let cine2 = [Cine.create "C0144" " " " " (0.0,0.0)];;
+let film = Film.create 139589 "" 0 "" [];;
+
+films_in_cinemas_at_precise_time cine film ((10,00),(20,00)) (11,5,2013);;
+
 
 (**
    Construire la requête pour avoir la liste des cinémas aux alentours d'un point précis
