@@ -13,11 +13,27 @@ type date = int * int * int;;
 type plage = heure * heure;;
 type horaire = string * plage;;
 
+(* A une date jj/mm/aaaa, on associe le jour de la semaine *)
+let day_of_week_of_date ((jj, mm, aaaa) : date) : string = 
+  failwith "TODO"
+;;
+
 (* retire les espaces par des plus *)
 let no_spaces_of_string (s : string) : string = 
  let s' = ref "" in
  let () = String.iter (fun c -> if (c=' ') then s':=!s'^"+" else s':=!s'^(String.make 1 c)) s in !s';;
 
+(* changed *)
+(* Retire les doublons dans une liste *)
+let no_repeated_elements_of_list ((@=) : 'a -> 'a -> bool) (l : 'a list) =
+  let rec aux l' acc = match l' with
+    | []       -> acc
+    | e :: l'' ->
+      if List.exists (fun x -> x @= e) acc
+      then aux l'' acc
+      else aux l'' (e :: acc)
+  in List.rev (aux l [])
+;;
 
 (* Pretty string pour une date *)
 let string_of_date (delimiter : string) ((jj, mm, aaaa) : date) : string =
@@ -48,6 +64,12 @@ let (@<) ((hh1, mm1) : heure) ((hh2, mm2) : heure) =
 
 let (@<=) t1 t2 = (t1 @< t2) || (t1 = t2);;
 
+(* A une heure, on retourne l'heure auquel on aura additionné des minutes *)
+let (@+) ((hh, mm) : heure) (minutes : int) : heure =
+  let h_of_m = minutes / 60
+  and remainding_m = minutes mod 60 in
+  ((hh + h_of_m + (if mm + remainding_m >= 60 then 1 else 0)) mod 24, (mm + remainding_m) mod 60)
+;;
 
 (**
    Déclaration des modules
@@ -195,6 +217,7 @@ module type FilmSig =
       val show : t -> unit 
     end;;
 
+(* changed *)
 module Film (* : FilmSig *) =
   struct
     type t = { id : int ; title : string ; runtime : int ; actors : string ; nationality : string list}
@@ -317,6 +340,7 @@ module Film (* : FilmSig *) =
 	^ "\n Nationalité : " ^ (String.concat " " f.nationality) 
       in
       print_string infos 
+    let weak_equal (f1 : t) (f2 : t) : bool = f1.id = f2.id
   end
 ;;
 
@@ -342,6 +366,7 @@ module type SeanceSig =
     (* val show : t -> unit *)
   end;;
 
+(* changed *)
 module Seance (* : SeanceSig *) =
   struct
     type t = { id : int ; film : Film.t ; cinema : Cine.t ; date : date ; begin_time : heure ; is_vo : bool option ; is_3d : bool option }
@@ -358,6 +383,7 @@ module Seance (* : SeanceSig *) =
     let getId f = f.id
     let getDate f = f.date
     let getBeginTime f = f.begin_time
+    let getFilm f = f.film
     let isVO f = f.is_vo
     let is3D f = f.is_3d
   end;;
@@ -469,9 +495,7 @@ let ajout_horaires_resto (l : Restau.t list) (l': (string * (horaire list)) list
   List.map (fun (id, horaire) -> let (n,a,p) = (assoc_restau_list id l) 
 				 in Restau.create id n a p horaire ) l'
 ;; 
-      
-
-      
+            
 let rec horaires_restaurants l =
   let aux l =
     let day_of_week_number_day = function
@@ -679,10 +703,10 @@ let seances_of_film_at_cinema (film : Film.t) (cine : Cine.t) =
     | _ -> assert false
 ;;
 
-let film_test = Film.informal_create "iron+man+3";;
+let film_test = Film.informal_create "la cage doree";;
 let cine_test = Cine.informal_create "ugc bercy";;
 let test_seance_type = seances_of_film_at_cinema film_test cine_test;;
-seance_list_of_screening_type test_seance_type;;
+
 
 
 (* REQUETE 1 : obtenir la liste des films projettés dans un cinema donné *)
@@ -747,17 +771,11 @@ let films_in_precise_cinema (cine : Cine.t) : Film.t list =
 let cine = Cine.create "C0026" " " " " (0.0,0.0);;
 let test = films_in_precise_cinema cine;;
 
-let test = List.nth test 0;;
 
 
 (* REQUETE 2 : obtenir la liste des cinemas projetant un film donné dans une plage horaire donnée *)
-let json_ast = Yojson.Safe.from_string (string_of_uri "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters=C0026&movie=139589&format=json");;
 
   
-
-
-
-
 let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : plage) (d : date) : Cine.t list = 
   let movie_showtimes_list_exists (cine : Cine.t) : bool = 
     let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters="^ Cine.getId cine ^ "&movie=" ^ string_of_int (Film.getId f) ^ "&format=json" in
@@ -767,9 +785,9 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
 	(try (match (List.assoc "theaterShowtimes" l)  with
 	  | `List (`Assoc l :: _) ->
 	    List.exists (fun (x, _) -> x = "movieShowtimes") l
-	  | _ -> assert false
+	  | _ -> failwith "false 1"
 	) with Not_found -> false)
-      | _ -> assert false
+      | _ -> failwith "false 2"
   and  movie_showtimes_of_theater (cine : Cine.t) : bool = 
     let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters="^ Cine.getId cine ^ "&movie=" ^ string_of_int (Film.getId f) ^ "&format=json" in
     let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
@@ -781,22 +799,22 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
 	      (match json_ast_of_screening_type with
 		| `Assoc l' -> (match List.assoc "scr" l' with
 		    | `List l'' ->
-			let l''' = List.filter (function `Assoc (("d", `String s) :: _) -> s = (string_of_date "-" d) | _ -> assert false) l'' in
+			let l''' = List.filter (function `Assoc (("d", `String s) :: _) -> s = (string_of_date "-" d) | _ -> failwith "false 3") l'' in
 			(match l''' with
 			  | `Assoc (l4) :: _ -> (match (List.assoc "t" l4) with
 			      | `List l5 ->
 				List.exists (function
 				  | `Assoc (_ :: _ :: ("$", `String s) :: []) ->
 				    (t1 @<= (heure_of_string s)) && ((heure_of_string s) @<= t2)
-				  | _ -> assert false
+				  | _ -> failwith "false 4"
 				) l5
-			      | _ -> assert false
+			      | _ -> failwith "false 5"
 			  )
 			  | _ -> false
 			)	
-			| _ -> assert false
+			| _ -> failwith "false 6"
 		)
-		| _ -> assert false
+		| _ -> failwith "false 7"
 	      )
 	    in
 	    (match (List.assoc "movieShowtimes" l) with
@@ -805,11 +823,11 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
 		(is_there_a_screening json_ast_of_screening_type_1) || (is_there_a_screening json_ast_of_screening_type_2)
 	       | `List (json_ast_of_screening_type :: []) ->
 		 is_there_a_screening json_ast_of_screening_type
-	       | _ -> assert false
+	       | _ -> false
 	    )
-	  | _ -> assert false
+	  | _ -> failwith "false 9"
 	)
-      | _ -> assert false 
+      | _ -> failwith "false 10"
   in
   let salles_projetant_le_film = List.filter (movie_showtimes_list_exists) l 
   in List.filter (movie_showtimes_of_theater) salles_projetant_le_film
@@ -826,117 +844,118 @@ let film = Film.create 139589 "" 0 "" [];;
 films_in_cinemas_at_precise_time cine film ((10,00),(20,00)) (11,5,2013);;
 
 
-(**
-   Construire la requête pour avoir la liste des cinémas aux alentours d'un point précis
-   Google Places + Allocine
-*)
-let json_ast_of_informal_cine_id (cine_id : string) = 
-  Yojson.Safe.from_string (
-    string_of_uri (
-      "http://api.allocine.fr/rest/v3/theaterlist?partner=E00024954332&format=json&theater=" ^ cine_id
-    ))
-;;
-
-let test = json_ast_of_informal_cine_id "C0026";;
-
-let cine_name_of_allocine_json (j : Yojson.Safe.json) : string  = match j with
-  | `Assoc (("feed", `Assoc l) :: _) -> (match (List.assoc "theater" l) with
-      | `List l ->
-	let l1 = List.map (function (`Assoc l) -> l | _ -> assert false) l in
-	let l2 = List.filter (fun l -> List.exists (fun a -> a = ("code", `String "C0026")) l) l1 in
-	let l3 = List.nth l2 0 in
-	(match (List.assoc "name" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)   
-      | _ -> assert false
-  )
-  | _        -> assert false
-;;
-
-cine_name_of_allocine_json test;;
-
-let cine_addr_of_allocine_json (j : Yojson.Safe.json) : string  = match j with
-  | `Assoc (("feed", `Assoc l) :: _) -> (match (List.assoc "theater" l) with
-      | `List l ->
-	let l1 = List.map (function (`Assoc l) -> l | _ -> assert false) l in
-	let l2 = List.filter (fun l -> List.exists (fun a -> a = ("code", `String "C0026")) l) l1 in
-	let l3 = List.nth l2 0 in
-	(match (List.assoc "address" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)
-	^ " " 
-	^ (match (List.assoc "postalCode" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)
-	^ " " 
-	^ (match (List.assoc "city" l3) with
-	  | `String name -> name
-	  | _ -> assert false
-	)
-
-      | _ -> assert false
-  )
-  | _        -> assert false
-;;
-
-cine_addr_of_allocine_json test;;
-
-let cine_pos_of_allocine_json (j : Yojson.Safe.json) : location = match j with
-  | `Assoc (("feed", `Assoc l) :: _) -> (match (List.assoc "theater" l) with
-      | `List l ->
-	let l1 = List.map (function (`Assoc l) -> l | _ -> assert false) l in
-	let l2 = List.filter (fun l -> List.exists (fun a -> a = ("code", `String "C0026")) l) l1 in
-	let l3 = List.nth l2 0 in
-	(match (List.assoc "geoloc" l3) with
-	  | `Assoc (("lat", `Float f1) :: ("long", `Float f2) :: _) -> (f1, f2)
-	  | _ -> assert false
-	)   
-      | _ -> assert false
-  )
-  | _        -> assert false
-;;
-
-cine_pos_of_allocine_json test;;
-
-
 (* REQUETE COMBINEE 1 : Quels sont les cinemas projettant le film informal_film_name dans la plage horaire (t1,t2) le jour d et qui sont dans un rayon de radius de emplacement *)
 
+(* changed *)
 let requete_combinee_1 (emplacement: string) (radius: int) (informal_film_name : string) ((t1, t2) : plage) (d : date) : Cine.t list =
-  let position = geographic_location_of_informal_location emplacement in
+  let position : location = geographic_location_of_informal_location emplacement in
   let film : Film.t = Film.informal_create informal_film_name
   and cine_list : Cine.t list = cinemas_at_geographic_location position radius in
   films_in_cinemas_at_precise_time cine_list film (t1, t2) d
 ;;
 
-requete_combinee_1 "bibliotheque+francois+mitterand+paris" 2000 "iron man 3" ((11, 0), (20, 0)) (11, 5, 2013);;
+requete_combinee_1  "bibliotheque+francois+mitterand+paris" 1000 "iron man 3" ((11, 0), (20, 0)) (11, 5, 2013);;
 
-
-(*let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
+(*
+let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
 let film = Film.informal_create "iron man 3";;
 let cine = cinemas_at_geographic_location loc 1000;;
 
-films_in_cinemas_at_precise_time cine film ((11,0), (20,0)) (11, 5, 2013);;*)
+films_in_cinemas_at_precise_time cine film ((11, 0), (20, 0)) (11, 5, 2012);;*)
 
 
 (*TODO*)
 
 
 (* REQUETE COMBINEE 2 : Quels sont les films projettés entre t1 et t2 dans un cinema à moins de radius de emplacement *)
+let requete_combinee_2 (emplacement : string) (radius : int) ((t1, t2) : plage) (d : date) : Film.t list =
+  let position : location = geographic_location_of_informal_location emplacement in
+  let cinema_dans_le_rayon : Cine.t list = cinemas_at_geographic_location position radius in
+  let films_projetes_dans_le_rayon : Film.t list = List.flatten (List.map (films_in_precise_cinema) cinema_dans_le_rayon) in
+  let film_list_sans_doublons : Film.t list = no_repeated_elements_of_list (Film.weak_equal) films_projetes_dans_le_rayon in
+  film_list_sans_doublons
+;;
+
 
 (* REQUETE COMBINEE 3 : Quels sont les restaurants ouverts entre t1 et t2 et qui sont amoins de radius de emplacement *)  
+
+let requete_combinee_3 (emplacement : string) (radius : int) ((t1, t2) : plage) (d : date) : Restau.t list =
+  let position : location = geographic_location_of_informal_location emplacement in
+  let restaurants_dans_le_rayon : Restau.t list = restaurants_at_geographic_location position radius in
+  let jour_de_la_semaine : string = day_of_week_of_date d in (* fonction à rédiger *)
+  let restaurants_ouverts_pendant : Restau.t list = open_restaurants_at_precise_time restaurants_dans_le_rayon jour_de_la_semaine (t1, t2) in
+  restaurants_ouverts_pendant
+;;
+
+
+(* REQUETE INTERMEDIAIRE *)
+(* Seance.t × Restau.t -> bool *)
+(* Décide si une séance seance après sa projection permettra au groupe d'amis d'aller manger au restaurant restau *)
+let est_possible_de_manger_apres_seance (seance : Seance.t) (restau : Restau.t) = 
+  let jour_semaine_de_seance : string = day_of_week_of_date (Seance.getDate seance) in
+  let heure_de_fin_seance : heure = (Seance.getBeginTime seance) @+ (Film.getRuntime (Seance.getFilm seance)) in
+  let horaires_du_jour : horaire list = List.filter (fun (x, _) -> x = jour_semaine_de_seance) (Restau.getTime restau) in
+  match horaires_du_jour with
+    | [] -> false
+    | _  ->
+      List.exists
+	(fun (_, (t1, t2)) ->
+	  (t1 @<= heure_de_fin_seance) && (heure_de_fin_seance @<= t2)
+	)
+	horaires_du_jour
+;;
+
 
 (* REQUETE COMBINEE 4 : Quels sont les films, parmi une liste donnée, comprenant des criteres tels que VO ou 3D,
    qui sont projetes entre t1 et t2 dans un cinema a moins de radius de emplacement, 
    et qui permettent d'aller manger ensuite dans un restaurant ouvert a moins de radius de emplacement *)
 
+let requete_combinee_4
+    (emplacement : string)
+    (radius_cine : int)
+    ((t1, t2) : plage)
+    (d : date)
+    (film_noms_informels_a_criteres : (string * bool * bool) list)
+    (radius_restau : int)
+     (* : Film.t list *) =
+  let position : location = geographic_location_of_informal_location emplacement in
+  let films : (Film.t (* * bool * bool *) ) list =
+    List.map (fun (n, _, _) -> Film.informal_create n) film_noms_informels_a_criteres in
+  let cinemas_dans_le_rayon : Cine.t list = cinemas_at_geographic_location position radius_cine in
+  let restaurants_dans_le_rayon : Restau.t list = restaurants_at_geographic_location position radius_restau in
+  let films_satisfaisant_les_cond_cinema : Film.t list = 
+    List.flatten
+      (List.flatten
+	 (List.map
+	    (fun f ->
+	      List.map
+		(fun c ->
+		  match films_in_cinemas_at_precise_time [c] f (t1, t2) d with
+		    | [] -> []
+		    | _  -> [f]
+		)
+		cinemas_dans_le_rayon
+	    )
+	    films
+	 )
+      ) in
+  let seances_satisfaisant_les_cond_cinema : Seance.t list =
+    List.flatten (List.flatten (List.map (fun film -> List.map (fun cine -> seances_of_film_at_cinema film cine) cinemas_dans_le_rayon) films_satisfaisant_les_cond_cinema)) in
+  let seances_satisfaisant_la_condition_manger_apres : Seance.t list =
+    List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_cinema in
+  let films_satisfaisant_la_condition_manger_apres : Film.t list =
+    List.map (fun seance -> Seance.getFilm seance) seances_satisfaisant_la_condition_manger_apres in
+  films_satisfaisant_la_condition_manger_apres
+;;
+
+
 (* REQUETE COMBINEE 5 : Quels sont les films, parmi une liste donnee, qui sont projetes a des horaires permettant
    a votre groupe d'amis de ne pas attendre plus d'une demi-heure, avant ou apres, et dans
    des cinemas distant moins de radius l'un de l'autre *)
 
+
+
 (* REQUETE COMBINEE 6 : Quels sont les films, parmi une liste donnee, comprenant des criteres tels que VO ou 3D,
 qui sont projetes entre t1 et t2 dans des cinema a moins de radius d'un point autour
 duquel existe un restaurant ouvert a moins de radius2 permettent d'aller manger ensuite *)
-
+ 
