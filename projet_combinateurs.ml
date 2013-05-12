@@ -174,7 +174,8 @@ let geographic_location_of_informal_location (l : string) : float * float =
 module type CineSig =
   sig
     type t
-    val create : string -> t
+    val create : string -> string -> string -> location -> t
+    val informal_create : string -> t
     val getId : t -> int
     val getName : t -> string
     val getAddr : t -> string
@@ -253,6 +254,7 @@ module type FilmSig =
     sig
       type t
       val create : int -> string -> int -> string -> string list -> t
+      val informal_create : string -> t
       val getTitle : t -> string
       val getRuntime : t -> int
       val getActors : t -> string
@@ -404,8 +406,9 @@ module type SeanceSig =
     val getId : t -> int
     val getDate : t -> heure
     val getBeginTime : t -> heure
-    val is_vo : t -> bool option
-    val is_3d : t -> bool option
+    val getFilm : t -> Film.t
+    val isVO : t -> bool option
+    val is3D : t -> bool option
     (* val show : t -> unit *)
   end;;
 
@@ -758,7 +761,7 @@ let films_in_precise_cinema (cine : Cine.t) : Film.t list =
   let uri = "http://api.allocine.fr/rest/v3/showtimelist?partner=E00024954332&theaters=" ^ (Cine.getId cine) ^ "&format=json" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
   match json_ast with
-    | `Assoc (("feed", `Assoc (l)) :: _) -> (match (List.assoc "theaterShowtimes" l) with
+    | `Assoc (("feed", `Assoc (l)) :: _) -> (try (match (List.assoc "theaterShowtimes" l) with
 	| `List (`Assoc l' :: _) -> (match (List.assoc "movieShowtimes" l') with
 	    | `List films_list ->
 	      let cine_module_of_movie_json_ast film_ast : Film.t = 
@@ -789,29 +792,32 @@ let films_in_precise_cinema (cine : Cine.t) : Film.t list =
 		      | _ -> assert false
 		  )
 		  | _ -> assert false
-		and movie_actors = match film_ast with 
-		  | `Assoc l -> (match (List.assoc "onShow" l) with
-		      | `Assoc (("movie", `Assoc l'') :: _) -> (match List.assoc "castingShort" l'' with
-			  | `Assoc l''' -> (match List.assoc "actors" l''' with
-			      | `String s -> s
-			      | _ -> assert false
-			  )
-			  | _ -> assert false
-		      )
-		      | _ -> assert false
-		  )
-		  | _ -> assert false
+		and movie_actors = try (
+		  match film_ast with 
+		    | `Assoc l -> (match (List.assoc "onShow" l) with
+			| `Assoc (("movie", `Assoc l'') :: _) -> (match List.assoc "castingShort" l'' with
+			    | `Assoc l''' -> (match List.assoc "actors" l''' with
+				| `String s -> s
+				| _ -> assert false
+			    )
+			    | _ -> assert false
+			)
+			| _ -> assert false
+		    )
+		    | _ -> assert false
+		)
+		  with _ -> ""   
 		and movie_nationality = []
 		in Film.create movie_id movie_title movie_runtime movie_actors movie_nationality
 	      in List.map (cine_module_of_movie_json_ast) films_list
 	    | _ -> assert false
 	)
 	| _ -> assert false
-    )       
+    ) with _ -> [])
     | _ -> assert false
 ;;
 
-let cine = Cine.create "C0026" " " " " (0.0,0.0);;
+let cine = Cine.create "C1159" " " " " (0.0,0.0);;
 let test = films_in_precise_cinema cine;;
 
 
@@ -911,13 +917,16 @@ films_in_cinemas_at_precise_time cine film ((11, 0), (20, 0)) (11, 5, 2012);;*)
 
 
 (* REQUETE COMBINEE 2 : Quels sont les films projettés entre t1 et t2 dans un cinema à moins de radius de emplacement *)
-let requete_combinee_2 (emplacement : string) (radius : int) ((t1, t2) : plage) (d : date) : Film.t list =
+let requete_combinee_2 (emplacement : string) (radius : int) ((t1, t2) : plage) (d : date)  =
   let position : location = geographic_location_of_informal_location emplacement in
   let cinema_dans_le_rayon : Cine.t list = cinemas_at_geographic_location position radius in
   let films_projetes_dans_le_rayon : Film.t list = List.flatten (List.map (films_in_precise_cinema) cinema_dans_le_rayon) in
   let film_list_sans_doublons : Film.t list = no_repeated_elements_of_list (Film.weak_equal) films_projetes_dans_le_rayon in
   film_list_sans_doublons
 ;;
+
+
+requete_combinee_2 "bibliotheque francois mitterand" 1000 ((10, 00), (22, 00)) (12, 5, 2013) ;;
 
 
 (* REQUETE COMBINEE 3 : Quels sont les restaurants ouverts entre t1 et t2 et qui sont amoins de radius de emplacement *)  
@@ -929,6 +938,8 @@ let requete_combinee_3 (emplacement : string) (radius : int) ((t1, t2) : plage) 
   let restaurants_ouverts_pendant : Restau.t list = open_restaurants_at_precise_time restaurants_dans_le_rayon jour_de_la_semaine (t1, t2) in
   restaurants_ouverts_pendant
 ;;
+
+requete_combinee_3 "bibliothque francois mitterand" 500 ((20, 00), (21, 00)) (12, 5, 2013);;
 
 
 (* REQUETE INTERMEDIAIRE *)
@@ -991,6 +1002,7 @@ let requete_combinee_4
   films_satisfaisant_la_condition_manger_apres
 ;;
 
+requete_combinee_4 "bibliotheque francois mitterand" 500 ((10, 00), (20, 00)) (12, 5, 2013) [("trance", false, false) ; ("gatsby", false, false) ; ("iron man 3", false, false)] 1000;;
 
 (* REQUETE COMBINEE 5 : Quels sont les films, parmi une liste donnee, qui sont projetes a des horaires permettant
    a votre groupe d'amis de ne pas attendre plus d'une demi-heure, avant ou apres, et dans
