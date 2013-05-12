@@ -978,10 +978,12 @@ let requete_combinee_4
     (d : date)
     (film_noms_informels_a_criteres : (string * bool * bool) list)
     (radius_restau : int)
-     (* : Film.t list *) =
+    : Film.t list =
   let position : location = geographic_location_of_informal_location emplacement in
-  let films : (Film.t (* * bool * bool *) ) list =
+  let films : Film.t list =
     List.map (fun (n, _, _) -> Film.informal_create n) film_noms_informels_a_criteres in
+  let films_a_criteres : (Film.t * (bool * bool)) list =
+    List.map (fun (n, must_be_vo, must_be_3d) -> (Film.informal_create n, (must_be_vo, must_be_3d))) film_noms_informels_a_criteres in
   let cinemas_dans_le_rayon : Cine.t list = cinemas_at_geographic_location position radius_cine in
   let restaurants_dans_le_rayon : Restau.t list = restaurants_at_geographic_location_avec_horaires position radius_restau in
   let films_satisfaisant_les_cond_cinema : Film.t list = 
@@ -1005,8 +1007,16 @@ let requete_combinee_4
       ) in
   let seances_satisfaisant_les_cond_cinema : Seance.t list =
     List.flatten (List.flatten (List.map (fun film -> List.map (fun cine -> try (seances_of_film_at_cinema film cine) with _ -> []) cinemas_dans_le_rayon) films_satisfaisant_les_cond_cinema)) in
+  let seances_satisfaisant_les_cond_vo_et_3d : Seance.t list =
+    List.filter
+      (fun seance ->
+	let (must_be_vo, must_be_3d) = List.assoc (Seance.getFilm seance) films_a_criteres in
+	(must_be_vo = (match (Seance.isVO seance) with Some b -> b | _ -> assert false)) &&
+	  (must_be_3d = (match (Seance.is3D seance) with Some b -> b | _ -> assert false))
+      )
+      seances_satisfaisant_les_cond_cinema in 
   let seances_satisfaisant_la_condition_manger_apres : Seance.t list =
-    List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_cinema in
+    List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_vo_et_3d in
   let films_satisfaisant_la_condition_manger_apres : Film.t list =
     List.map (fun seance -> Seance.getFilm seance) seances_satisfaisant_la_condition_manger_apres in
   let liste_sans_repet =
