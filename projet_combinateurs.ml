@@ -599,6 +599,13 @@ let l = restaurants_at_geographic_location loc 500;;
 let l' = horaires_restaurants l;;
 let resto = ajout_horaires_resto l l';;
 
+let restaurants_at_geographic_location_avec_horaires (emplacement : location) (radius : int) =
+  let l = restaurants_at_geographic_location emplacement radius in
+  let l' = horaires_restaurants l in
+  ajout_horaires_resto l l'
+;;
+
+
 let is_intersection_not_null ((t1', t2') : plage) ((t1, t2) : plage) : bool =
   (t1' @< t1) && (t1 @< t2') || (t1 @< t1') && (t2' @< t2) || (t1 @< t1') && (t1' @< t2);;
 
@@ -976,33 +983,40 @@ let requete_combinee_4
   let films : (Film.t (* * bool * bool *) ) list =
     List.map (fun (n, _, _) -> Film.informal_create n) film_noms_informels_a_criteres in
   let cinemas_dans_le_rayon : Cine.t list = cinemas_at_geographic_location position radius_cine in
-  let restaurants_dans_le_rayon : Restau.t list = restaurants_at_geographic_location position radius_restau in
+  let restaurants_dans_le_rayon : Restau.t list = restaurants_at_geographic_location_avec_horaires position radius_restau in
   let films_satisfaisant_les_cond_cinema : Film.t list = 
-    List.flatten
+    no_repeated_elements_of_list
+      (Film.weak_equal)
       (List.flatten
-	 (List.map
-	    (fun f ->
-	      List.map
-		(fun c ->
-		  match films_in_cinemas_at_precise_time [c] f (t1, t2) d with
-		    | [] -> []
-		    | _  -> [f]
-		)
-		cinemas_dans_le_rayon
+	 (List.flatten
+	    (List.map
+	       (fun f ->
+		 List.map
+		   (fun c ->
+		     match films_in_cinemas_at_precise_time [c] f (t1, t2) d with
+		       | [] -> []
+		       | _  -> [f]
+		   )
+		   cinemas_dans_le_rayon
+	       )
+	       films
 	    )
-	    films
 	 )
       ) in
   let seances_satisfaisant_les_cond_cinema : Seance.t list =
-    List.flatten (List.flatten (List.map (fun film -> List.map (fun cine -> seances_of_film_at_cinema film cine) cinemas_dans_le_rayon) films_satisfaisant_les_cond_cinema)) in
+    List.flatten (List.flatten (List.map (fun film -> List.map (fun cine -> try (seances_of_film_at_cinema film cine) with _ -> []) cinemas_dans_le_rayon) films_satisfaisant_les_cond_cinema)) in
   let seances_satisfaisant_la_condition_manger_apres : Seance.t list =
     List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_cinema in
   let films_satisfaisant_la_condition_manger_apres : Film.t list =
     List.map (fun seance -> Seance.getFilm seance) seances_satisfaisant_la_condition_manger_apres in
-  films_satisfaisant_la_condition_manger_apres
+  let liste_sans_repet =
+    no_repeated_elements_of_list
+      (Film.weak_equal)
+      films_satisfaisant_la_condition_manger_apres
+  in liste_sans_repet
 ;;
 
-requete_combinee_4 "bibliotheque francois mitterand" 500 ((10, 00), (20, 00)) (12, 5, 2013) [("trance", false, false) ; ("gatsby", false, false) ; ("iron man 3", false, false)] 1000;;
+requete_combinee_4 "bibliotheque francois mitterand" 1000 ((10, 00), (20, 00)) (12, 5, 2013) [("trance", false, false) ; ("gatsby", false, false) ; ("iron man 3", false, false)] 1000;;
 
 (* REQUETE COMBINEE 5 : Quels sont les films, parmi une liste donnee, qui sont projetes a des horaires permettant
    a votre groupe d'amis de ne pas attendre plus d'une demi-heure, avant ou apres, et dans
