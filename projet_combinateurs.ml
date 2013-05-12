@@ -13,9 +13,52 @@ type date = int * int * int;;
 type plage = heure * heure;;
 type horaire = string * plage;;
 
+(* Décide si une année est bissextile *)
+let est_bissextile (aaaa : int) : bool = 
+  ((aaaa mod 4 = 0) && (aaaa mod 100 <> 0)) || (aaaa mod 400 = 0)
+;;
+
 (* A une date jj/mm/aaaa, on associe le jour de la semaine *)
-let day_of_week_of_date ((jj, mm, aaaa) : date) : string = 
-  failwith "TODO"
+(* http://fr.wikibooks.org/wiki/Trouver_le_jour_de_la_semaine_avec_une_date_donn%C3%A9e *)
+let day_of_week_of_date ((jj, mm, aaaa) : date)  = 
+  let deux_chiffres_annee = aaaa - (aaaa / 100) * 100 in
+  let ajout_1_quart = deux_chiffres_annee + deux_chiffres_annee / 4 in
+  let ajout_jour_mois = ajout_1_quart + jj in
+  let ajout_code_mois = ajout_jour_mois + (match mm with
+    | 1	 -> 1
+    | 2	 -> 4
+    | 3	 -> 4
+    | 4	 -> 0
+    | 5	 -> 2
+    | 6	 -> 5
+    | 7	 -> 0
+    | 8	 -> 3
+    | 9	 -> 6
+    | 10 -> 1
+    | 11 -> 4
+    | 12 -> 6
+    | _  -> failwith "Impossible date"
+  ) in
+  let if_bissex = if (est_bissextile aaaa) && ((mm = 1) || (mm = 2)) then ajout_code_mois - 1 else ajout_code_mois in
+  let selon_siecle = if_bissex + match ((aaaa / 100) * 100) with
+    | 1600 -> 6
+    | 1700 -> 4
+    | 1800 -> 2
+    | 1900 -> 0
+    | 2000 -> 6
+    | 2100 -> 4
+    | _    -> failwith "Impossible date" in
+  let divise_garde_reste = selon_siecle mod 7 in
+  let jour_de_semaine = match divise_garde_reste with
+    | 1	-> "dimanche"
+    | 2	-> "lundi"
+    | 3	-> "mardi"
+    | 4	-> "mercredi"
+    | 5	-> "jeudi"
+    | 6	-> "vendredi"
+    | 0	-> "samedi"
+    | _ -> assert false
+  in jour_de_semaine
 ;;
 
 (* retire les espaces par des plus *)
@@ -882,7 +925,7 @@ let requete_combinee_2 (emplacement : string) (radius : int) ((t1, t2) : plage) 
 let requete_combinee_3 (emplacement : string) (radius : int) ((t1, t2) : plage) (d : date) : Restau.t list =
   let position : location = geographic_location_of_informal_location emplacement in
   let restaurants_dans_le_rayon : Restau.t list = restaurants_at_geographic_location position radius in
-  let jour_de_la_semaine : string = day_of_week_of_date d in (* fonction à rédiger *)
+  let jour_de_la_semaine : string = day_of_week_of_date d in
   let restaurants_ouverts_pendant : Restau.t list = open_restaurants_at_precise_time restaurants_dans_le_rayon jour_de_la_semaine (t1, t2) in
   restaurants_ouverts_pendant
 ;;
