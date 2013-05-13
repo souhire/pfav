@@ -151,7 +151,7 @@ let string_of_uri ?(headers=[]) ?query uri =
 (* Position géographique (latitude, longitude) à partir d'un emplacement informel *)
 let geographic_location_of_informal_location (l : string) : float * float =
   (* a changer en attendant le support de HTTPS *)
-  let uri = "https://maps.googleapis.com/maps/api/place/textsearch/json?sensor=true&query="^ no_spaces_of_string l ^"&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE" in
+  let uri = "https://maps.googleapis.com/maps/api/place/textsearch/json?sensor=true&query="^ no_spaces_of_string l ^"&key=AIzaSyBa2EHsSGAyp29Gqzcbifuzbww6DzdeA-0" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
   match json_ast with
     | `Assoc (l) -> (
@@ -483,7 +483,7 @@ end;;
 let restaurants_at_geographic_location (emplacement : location) (radius : int)  =
   (* a changer en attendant le support de HTTPS *)
   (* regler le pb de choisir l'emplacement le plus et NON le plus "interessant" *)
-  let uri = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location="^(string_of_float(fst emplacement))^","^(string_of_float(snd emplacement))^"&radius="^(string_of_int radius)^"&sensor=true&key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&types=restaurant" in
+  let uri = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?language=fr&location="^(string_of_float(fst emplacement))^","^(string_of_float(snd emplacement))^"&radius="^(string_of_int radius)^"&sensor=true&key=AIzaSyBa2EHsSGAyp29Gqzcbifuzbww6DzdeA-0&types=restaurant" in
   let json_ast = Yojson.Safe.from_string (string_of_uri uri) in
   (match json_ast with
     | `Assoc l -> 
@@ -570,7 +570,7 @@ let rec horaires_restaurants l =
     | [] -> []
     | resto :: r -> let id = Restau.getId resto in 
 		    let uri =
-		      "https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyA2kG_PpWlQG91CVNXKfyeaKdxbuUK-CeE&reference="^id^"&sensor=false" in
+		      "https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyBa2EHsSGAyp29Gqzcbifuzbww6DzdeA-0&reference="^id^"&sensor=false" in
 		    let json_ast = Yojson.Safe.from_string (string_of_uri uri)
 		    in
 		    (match json_ast with
@@ -623,6 +623,7 @@ open_restaurants_at_precise_time resto  "lundi" ((09,00),(11,00));;
 
 
 (* REQUETE 3 : obtenir la liste des cinémas à une distance donée d'un point donné *)
+
 
 let cinemas_at_geographic_location (emplacement: location) (radius: int)  =
   let uri = "http://api.allocine.fr/rest/v3/theaterlist?partner=E00024954332&lat="^(string_of_float(fst emplacement))^"&long="^(string_of_float(snd emplacement))^"&radius="^(string_of_int radius)^"&format=json" in
@@ -825,8 +826,9 @@ let films_in_precise_cinema (cine : Cine.t) : Film.t list =
 ;;
 
 let cine = Cine.create "C1159" " " " " (0.0,0.0);;
+let cine2 = Cine.create "C0026" " " " " (0.0,0.0);;
 let test = films_in_precise_cinema cine;;
-
+let test2 = films_in_precise_cinema cine2;;
 
 
 (* REQUETE 2 : obtenir la liste des cinemas projetant un film donné dans une plage horaire donnée *)
@@ -890,27 +892,32 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
 ;;
 
 let cine = [Cine.create "C0026" " " " " (0.0,0.0);
-	    Cine.create "CO144" " " " " (0.0,0.0);
+	    Cine.create "CO150" " " " " (0.0,0.0);
 	    Cine.create "C0146" " " " " (0.0,0.0);
-	    Cine.create "C2954" " " " " (0.0,0.0);
-	    Cine.create "B0193" " " " " (0.0,0.0)];;
+	    Cine.create "C0024" " " " " (0.0,0.0);
+	    Cine.create "B0258" " " " " (0.0,0.0)];;
 let cine2 = [Cine.create "C0144" " " " " (0.0,0.0)];;
 let film = Film.create 139589 "" 0 "" [];;
 
-films_in_cinemas_at_precise_time cine film ((10,00),(20,00)) (11,5,2013);;
+films_in_cinemas_at_precise_time cine film ((11,00),(20,00)) (13,5,2013);;
 
 
-(* REQUETE COMBINEE 1 : Quels sont les cinemas projettant le film informal_film_name dans la plage horaire (t1,t2) le jour d et qui sont dans un rayon de radius de emplacement *)
+(* REQUETE COMBINEE 1 : Quels sont les cinemas projettant le film informal_film_name dans la plage horaire (t1,t2) le jour d et qui sont dans un rayon de radius (en kilometres) de emplacement *)
 
 (* changed *)
 let requete_combinee_1 (emplacement: string) (radius: int) (informal_film_name : string) ((t1, t2) : plage) (d : date) : Cine.t list =
-  let position : location = geographic_location_of_informal_location emplacement in
   let film : Film.t = Film.informal_create informal_film_name
-  and cine_list : Cine.t list = cinemas_at_geographic_location position radius in
+  and position : location = geographic_location_of_informal_location emplacement in
+  let cine_list : Cine.t list = cinemas_at_geographic_location position radius in
   films_in_cinemas_at_precise_time cine_list film (t1, t2) d
 ;;
 
-requete_combinee_1  "bibliotheque+francois+mitterand+paris" 1000 "iron man 3" ((11, 0), (20, 0)) (11, 5, 2013);;
+let pos = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
+
+cinemas_at_geographic_location pos 2;;
+let test_res = requete_combinee_1  "bibliotheque+francois+mitterand+paris" 2 "iron man 3" ((11, 0), (20, 0)) (13, 5, 2013);;
+List.map (fun x -> Cine.getName x) test_res;;
+
 
 (*
 let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
@@ -933,7 +940,7 @@ let requete_combinee_2 (emplacement : string) (radius : int) ((t1, t2) : plage) 
 ;;
 
 
-requete_combinee_2 "bibliotheque francois mitterand" 1000 ((10, 00), (22, 00)) (12, 5, 2013) ;;
+requete_combinee_2 "bibliotheque francois mitterand" 1 ((10, 00), (22, 00)) (12, 5, 2013) ;;
 
 
 (* REQUETE COMBINEE 3 : Quels sont les restaurants ouverts entre t1 et t2 et qui sont amoins de radius de emplacement *)  
