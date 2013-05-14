@@ -66,7 +66,6 @@ let no_spaces_of_string (s : string) : string =
  let s' = ref "" in
  let () = String.iter (fun c -> if (c=' ') then s':=!s'^"+" else s':=!s'^(String.make 1 c)) s in !s';;
 
-(* changed *)
 (* Retire les doublons dans une liste *)
 let no_repeated_elements_of_list ((@=) : 'a -> 'a -> bool) (l : 'a list) =
   let rec aux l' acc = match l' with
@@ -114,18 +113,16 @@ let (@+) ((hh, mm) : heure) (minutes : int) : heure =
   ((hh + h_of_m + (if mm + remainding_m >= 60 then 1 else 0)) mod 24, (mm + remainding_m) mod 60)
 ;;
 
+(* Distance entre deux temps horaires *)
+let rec (@|.|) ((h1, m1) : heure) ((h2, m2) : heure) =
+  if (h2, m2) @< (h1, m1)
+  then (h2, m2) @|.| (h1, m1)
+  else (h2 * 60 + m2) - (h1 * 60 + m1)
+;;
+
 (**
    Déclaration des modules
 *)
-
-(*
-Module Film : id, titre, durée, acteurs, nationalité
-Module Séance: hash_film, heure_deb, hash_cinema, VO/VF
-Module Cinema : id, nom, addr, pos
-Module Personne : choix, (heure, marge), (lieu, marge), nom
-Module Restaurant : nom, addr, pos, id
-*)
-
 
 (* Fonction string_of_uri *)
 (* Copyright RDC *)
@@ -442,6 +439,19 @@ sig
   val getName : t -> string
 end;;
 
+module Personne = 
+  struct 
+    type t = {
+      films : (string * (bool * bool)) list
+    }
+    let create (films_utilisateur : (string * (bool * bool)) list) = 
+      {
+	films = films_utilisateur
+      }
+    let getFilms f = f.films
+  end
+;;
+
 (* Module d'un lieu de restauration *)
 module type RestauSig =
 sig
@@ -521,12 +531,13 @@ let restaurants_at_geographic_location (emplacement : location) (radius : int)  
   )
 ;;
 
+(*
 let loc = geographic_location_of_informal_location "MK2+bibliotheque+paris";;
 let l = restaurants_at_geographic_location loc 500;;
 Restau.getTime (List.nth l 0);;
 Restau.show (List.nth l 0);;
 List.map (Restau.show) l;;
-
+*)
 
 
 (* REQUETE 7 : Selectionner les restaurants ouverts dans une plage horaire donnée *)
@@ -593,11 +604,13 @@ let rec horaires_restaurants l =
 		      | _ -> failwith "AST problem"
 		    ) ;;
 
+(*
 restaurants_at_geographic_location loc 500;;
 let loc = geographic_location_of_informal_location "boulevard+des+capucines+paris";;
 let l = restaurants_at_geographic_location loc 500;;
 let l' = horaires_restaurants l;;
 let resto = ajout_horaires_resto l l';;
+*)
 
 let restaurants_at_geographic_location_avec_horaires (emplacement : location) (radius : int) =
   let l = restaurants_at_geographic_location emplacement radius in
@@ -618,9 +631,9 @@ let open_restaurants_at_precise_time (l : Restau.t list) (j : string) (p : plage
   let res = List.filter (fun (str,_) -> List.exists (fun (str',_) -> str = str') liste') l' in ajout_horaires_resto l res
 ;;
 
-
+(*
 open_restaurants_at_precise_time resto  "lundi" ((09,00),(11,00));;
-
+*)
 
 (* REQUETE 3 : obtenir la liste des cinémas à une distance donée d'un point donné *)
 
@@ -757,10 +770,11 @@ let seances_of_film_at_cinema (film : Film.t) (cine : Cine.t) =
     | _ -> assert false
 ;;
 
+(*
 let film_test = Film.informal_create "la cage doree";;
 let cine_test = Cine.informal_create "ugc bercy";;
 let test_seance_type = seances_of_film_at_cinema film_test cine_test;;
-
+*)
 
 
 (* REQUETE 1 : obtenir la liste des films projettés dans un cinema donné *)
@@ -825,10 +839,12 @@ let films_in_precise_cinema (cine : Cine.t) : Film.t list =
     | _ -> assert false
 ;;
 
+(*
 let cine = Cine.create "C1159" " " " " (0.0,0.0);;
 let cine2 = Cine.create "C0026" " " " " (0.0,0.0);;
 let test = films_in_precise_cinema cine;;
 let test2 = films_in_precise_cinema cine2;;
+*)
 
 
 (* REQUETE 2 : obtenir la liste des cinemas projetant un film donné dans une plage horaire donnée *)
@@ -891,6 +907,7 @@ let films_in_cinemas_at_precise_time (l : Cine.t list) (f : Film.t) ((t1, t2) : 
   in List.filter (movie_showtimes_of_theater) salles_projetant_le_film
 ;;
 
+(*
 let cine = [Cine.create "C0026" " " " " (0.0,0.0);
 	    Cine.create "CO150" " " " " (0.0,0.0);
 	    Cine.create "C0146" " " " " (0.0,0.0);
@@ -900,7 +917,7 @@ let cine2 = [Cine.create "C0144" " " " " (0.0,0.0)];;
 let film = Film.create 139589 "" 0 "" [];;
 
 films_in_cinemas_at_precise_time cine film ((11,00),(20,00)) (13,5,2013);;
-
+*)
 
 (* REQUETE COMBINEE 1 : Quels sont les cinemas projettant le film informal_film_name dans la plage horaire (t1,t2) le jour d et qui sont dans un rayon de radius (en kilometres) de emplacement *)
 
@@ -912,11 +929,12 @@ let requete_combinee_1 (emplacement: string) (radius: int) (informal_film_name :
   films_in_cinemas_at_precise_time cine_list film (t1, t2) d
 ;;
 
+(*
 let pos = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
 
 let test_res = requete_combinee_1  "bibliotheque+francois+mitterand+paris" 2 "iron man 3" ((11, 0), (20, 0)) (14, 5, 2013);;
 List.map (fun x -> Cine.getName x) test_res;;
-
+*)
 
 (*
 let loc = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
@@ -952,8 +970,9 @@ let requete_combinee_3 (emplacement : string) (radius : int) ((t1, t2) : plage) 
   restaurants_ouverts_pendant
 ;;
 
+(*
 requete_combinee_3 "bibliothque francois mitterand" 500 ((20, 00), (21, 00)) (14, 5, 2013);;
-
+*)
 
 (* REQUETE INTERMEDIAIRE *)
 (* Seance.t × Restau.t -> bool *)
@@ -1013,6 +1032,8 @@ let requete_combinee_4
       ) in
   let seances_satisfaisant_les_cond_cinema : Seance.t list =
     List.flatten (List.flatten (List.map (fun film -> List.map (fun cine -> try (seances_of_film_at_cinema film cine) with _ -> []) cinemas_dans_le_rayon) films_satisfaisant_les_cond_cinema)) in
+  let seances_satisfaisant_les_cond_horaires : Seance.t list =
+    List.filter (fun seance -> (t1 @<= (Seance.getBeginTime seance)) && ((Seance.getBeginTime seance) @<= t2)) seances_satisfaisant_les_cond_cinema in
   let seances_satisfaisant_les_cond_vo_et_3d : Seance.t list =
     List.filter
       (fun seance ->
@@ -1020,7 +1041,7 @@ let requete_combinee_4
 	(must_be_vo = (match (Seance.isVO seance) with Some b -> b | _ -> assert false)) &&
 	  (must_be_3d = (match (Seance.is3D seance) with Some b -> b | _ -> assert false))
       )
-      seances_satisfaisant_les_cond_cinema in 
+      seances_satisfaisant_les_cond_horaires in 
   let seances_satisfaisant_la_condition_manger_apres : Seance.t list =
     List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_vo_et_3d (*in
   let films_satisfaisant_la_condition_manger_apres : Film.t list =
