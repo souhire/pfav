@@ -979,7 +979,7 @@ requete_combinee_3 "bibliothque francois mitterand" 500 ((20, 00), (21, 00)) (14
 (* Décide si une séance seance après sa projection permettra au groupe d'amis d'aller manger au restaurant restau *)
 let est_possible_de_manger_apres_seance (seance : Seance.t) (restau : Restau.t) = 
   let jour_semaine_de_seance : string = day_of_week_of_date (Seance.getDate seance) in
-  let heure_de_fin_seance : heure = (Seance.getBeginTime seance) @+ (Film.getRuntime (Seance.getFilm seance)) in
+  let heure_de_fin_seance : heure = (Seance.getBeginTime seance) @+ (Film.getRuntime (Seance.getFilm seance) / 60) in
   let horaires_du_jour : horaire list = List.filter (fun (x, _) -> x = jour_semaine_de_seance) (Restau.getTime restau) in
   match horaires_du_jour with
     | [] -> false
@@ -1003,7 +1003,7 @@ let requete_combinee_4
     (d : date)
     (film_noms_informels_a_criteres : (string * bool * bool) list)
     (radius_restau : int)
-    : Seance.t list =
+    = (* Seance.t list = *)
   let position : location = geographic_location_of_informal_location emplacement in
   let films : Film.t list =
     List.map (fun (n, _, _) -> Film.informal_create n) film_noms_informels_a_criteres in
@@ -1042,18 +1042,25 @@ let requete_combinee_4
 	  (must_be_3d = (match (Seance.is3D seance) with Some b -> b | _ -> assert false))
       )
       seances_satisfaisant_les_cond_horaires in 
+  let seances_avec_les_restaus_apres : (Seance.t * Restau.t list) list =
+    List.map
+      (fun seance -> (seance,
+		      List.filter
+			(fun restau -> est_possible_de_manger_apres_seance seance restau)
+			restaurants_dans_le_rayon)
+      )
+      seances_satisfaisant_les_cond_vo_et_3d
+(*
   let seances_satisfaisant_la_condition_manger_apres : Seance.t list =
-    List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_vo_et_3d (*in
-  let films_satisfaisant_la_condition_manger_apres : Film.t list =
-    List.map (fun seance -> Seance.getFilm seance) seances_satisfaisant_la_condition_manger_apres in
-  let liste_sans_repet =
-    no_repeated_elements_of_list
-      (Film.weak_equal)
-      films_satisfaisant_la_condition_manger_apres
-  in liste_sans_repet*) in seances_satisfaisant_la_condition_manger_apres
+    List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_vo_et_3d
+*)
+  in 
+  let seances_satisfaisant_la_condition_manger_apres = 
+    List.filter (fun (_, restau_l) -> restau_l <> []) seances_avec_les_restaus_apres
+  in seances_satisfaisant_la_condition_manger_apres
 ;;
 
-requete_combinee_4 "bibliotheque francois mitterand" 1000 ((19, 00), (22, 00)) (14, 5, 2013) [("trance", false, false) ; ("gatsby", false, false) ; ("iron man 3", false, false)] 1000;;
+let test4 = requete_combinee_4 "bibliotheque francois mitterand" 2 ((19, 00), (22, 00)) (14, 5, 2013) [("sous surveillance", false, false) ; ("the hit girls", false, false)] 1000;;
 
 (* REQUETE COMBINEE 5 : Quels sont les films, parmi une liste donnee, qui sont projetes a des horaires permettant
    a votre groupe d'amis de ne pas attendre plus d'une demi-heure, avant ou apres, et dans
@@ -1065,8 +1072,4 @@ requete_combinee_4 "bibliotheque francois mitterand" 1000 ((19, 00), (22, 00)) (
 qui sont projetes entre t1 et t2 dans des cinema a moins de radius d'un point autour
 duquel existe un restaurant ouvert a moins de radius2 permettent d'aller manger ensuite *)
  
-let main =
-
-  print_string "Combien de personnes dans le groupe?\n";
-  print_string "Personne\n";;
-
+List.nth test4 0;;
