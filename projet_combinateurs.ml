@@ -914,8 +914,7 @@ let requete_combinee_1 (emplacement: string) (radius: int) (informal_film_name :
 
 let pos = geographic_location_of_informal_location "bibliotheque+francois+mitterand+paris";;
 
-cinemas_at_geographic_location pos 2;;
-let test_res = requete_combinee_1  "bibliotheque+francois+mitterand+paris" 2 "iron man 3" ((11, 0), (20, 0)) (13, 5, 2013);;
+let test_res = requete_combinee_1  "bibliotheque+francois+mitterand+paris" 2 "iron man 3" ((11, 0), (20, 0)) (14, 5, 2013);;
 List.map (fun x -> Cine.getName x) test_res;;
 
 
@@ -953,7 +952,7 @@ let requete_combinee_3 (emplacement : string) (radius : int) ((t1, t2) : plage) 
   restaurants_ouverts_pendant
 ;;
 
-requete_combinee_3 "bibliothque francois mitterand" 500 ((20, 00), (21, 00)) (12, 5, 2013);;
+requete_combinee_3 "bibliothque francois mitterand" 500 ((20, 00), (21, 00)) (14, 5, 2013);;
 
 
 (* REQUETE INTERMEDIAIRE *)
@@ -985,7 +984,7 @@ let requete_combinee_4
     (d : date)
     (film_noms_informels_a_criteres : (string * bool * bool) list)
     (radius_restau : int)
-    : Film.t list =
+    : Seance.t list =
   let position : location = geographic_location_of_informal_location emplacement in
   let films : Film.t list =
     List.map (fun (n, _, _) -> Film.informal_create n) film_noms_informels_a_criteres in
@@ -1023,17 +1022,17 @@ let requete_combinee_4
       )
       seances_satisfaisant_les_cond_cinema in 
   let seances_satisfaisant_la_condition_manger_apres : Seance.t list =
-    List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_vo_et_3d in
+    List.filter (fun seance -> List.exists (fun restau -> est_possible_de_manger_apres_seance seance restau) restaurants_dans_le_rayon) seances_satisfaisant_les_cond_vo_et_3d (*in
   let films_satisfaisant_la_condition_manger_apres : Film.t list =
     List.map (fun seance -> Seance.getFilm seance) seances_satisfaisant_la_condition_manger_apres in
   let liste_sans_repet =
     no_repeated_elements_of_list
       (Film.weak_equal)
       films_satisfaisant_la_condition_manger_apres
-  in liste_sans_repet
+  in liste_sans_repet*) in seances_satisfaisant_la_condition_manger_apres
 ;;
 
-requete_combinee_4 "bibliotheque francois mitterand" 1000 ((10, 00), (20, 00)) (12, 5, 2013) [("trance", false, false) ; ("gatsby", false, false) ; ("iron man 3", false, false)] 1000;;
+requete_combinee_4 "bibliotheque francois mitterand" 1000 ((19, 00), (22, 00)) (14, 5, 2013) [("trance", false, false) ; ("gatsby", false, false) ; ("iron man 3", false, false)] 1000;;
 
 (* REQUETE COMBINEE 5 : Quels sont les films, parmi une liste donnee, qui sont projetes a des horaires permettant
    a votre groupe d'amis de ne pas attendre plus d'une demi-heure, avant ou apres, et dans
@@ -1045,3 +1044,8 @@ requete_combinee_4 "bibliotheque francois mitterand" 1000 ((10, 00), (20, 00)) (
 qui sont projetes entre t1 et t2 dans des cinema a moins de radius d'un point autour
 duquel existe un restaurant ouvert a moins de radius2 permettent d'aller manger ensuite *)
  
+let main =
+
+  print_string "Combien de personnes dans le groupe?\n";
+  print_string "Personne\n";;
+
